@@ -34,10 +34,11 @@ config :itsm_backend, ItsmBackend.Mailer, adapter: Swoosh.Adapters.Local
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
-  
-  
+
+
 config :itsm_backend,
-  ai_client: ItsmBackend.AIClient.Mock
+  ai_client: ItsmBackend.AIClient.HTTP,
+  ai_service_url: "http://127.0.0.1:8000"
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
