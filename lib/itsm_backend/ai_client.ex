@@ -8,6 +8,7 @@ defmodule ItsmBackend.AIClient do
 
   @callback execute_job(
               job_id :: String.t(),
+              attempt :: pos_integer(),
               user_id :: String.t(),
               message :: String.t()
             ) ::

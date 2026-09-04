@@ -8,7 +8,9 @@ defmodule ItsmBackendWeb.Router do
   scope "/api", ItsmBackendWeb do
     pipe_through :api
 
-    get "/health", HealthController, :index
+    get "/health",
+        HealthController,
+        :index
 
     post "/v1/agent/run",
          AgentController,
@@ -25,5 +27,9 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/jobs/:id",
         JobController,
         :show
+
+    post "/internal/v1/jobs/:id/completion",
+         JobCompletionController,
+         :complete
   end
 end

@@ -157,6 +157,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
     case ai_client.execute_job(
            job.id,
+           job.attempts,
            job.user_id,
            job.message
          ) do

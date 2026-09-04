@@ -58,6 +58,7 @@ defmodule ItsmBackend.AIClient.HTTP do
   @impl true
   def execute_job(
         job_id,
+        attempt,
         user_id,
         message
       ) do
@@ -65,6 +66,7 @@ defmodule ItsmBackend.AIClient.HTTP do
            "#{base_url()}/v1/jobs/execute",
            json: %{
              job_id: job_id,
+             attempt: attempt,
              user_id: user_id,
              message: message
            },
@@ -205,7 +207,7 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   # ------------------------------------------------------------
-  # ACK validation
+  # Job ACK validation
   # ------------------------------------------------------------
 
   defp validate_job_ack(

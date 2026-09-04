@@ -44,6 +44,7 @@ defmodule ItsmBackend.AIClient.Mock do
   @impl true
   def execute_job(
         job_id,
+        _attempt,
         _user_id,
         _message
       ) do

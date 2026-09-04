@@ -48,9 +48,12 @@ config :itsm_backend,
        poll_interval_ms: 1_000,
        lease_seconds: 300
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-import_config "#{config_env()}.exs"
+config :itsm_backend,
+  internal_job_token:
+    System.get_env(
+      "ITSM_INTERNAL_JOB_TOKEN",
+      "itsm-dev-internal-2026"
+    )
 
 config :itsm_backend,
   ai_client: ItsmBackend.AIClient.HTTP,
@@ -64,6 +67,6 @@ config :itsm_backend,
        username: "itsm_app",
        password: "itsm_dev_2026"
 
-config :itsm_backend,
-       :queue_worker,
-       enabled: false
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{config_env()}.exs"
