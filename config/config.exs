@@ -42,6 +42,12 @@ config :itsm_backend,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :itsm_backend,
+       :queue_worker,
+       enabled: true,
+       poll_interval_ms: 1_000,
+       lease_seconds: 300
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
@@ -57,3 +63,7 @@ config :itsm_backend,
        database: "itsm",
        username: "itsm_app",
        password: "itsm_dev_2026"
+
+config :itsm_backend,
+       :queue_worker,
+       enabled: false

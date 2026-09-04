@@ -4,7 +4,10 @@ defmodule ItsmBackend.AIClient.Mock do
   @impl true
   def run(user_id, message) do
     cond do
-      String.contains?(String.downcase(message), "unlock") ->
+      String.contains?(
+        String.downcase(message),
+        "unlock"
+      ) ->
         {:ok,
          %{
            request_id: "req-mock-002",
@@ -16,12 +19,17 @@ defmodule ItsmBackend.AIClient.Mock do
            }
          }}
 
-      String.contains?(String.downcase(message), "locked") ->
+      String.contains?(
+        String.downcase(message),
+        "locked"
+      ) ->
         {:ok,
          %{
            request_id: "req-mock-001",
            status: "success",
-           routes: ["account-specialist"],
+           routes: [
+             "account-specialist"
+           ],
            result: %{
              user_id: user_id,
              locked: false
@@ -31,6 +39,20 @@ defmodule ItsmBackend.AIClient.Mock do
       true ->
         {:error, :unsupported_request}
     end
+  end
+
+  @impl true
+  def execute_job(
+        job_id,
+        _user_id,
+        _message
+      ) do
+    {:ok,
+     %{
+       "job_id" => job_id,
+       "status" => "accepted",
+       "duplicate" => false
+     }}
   end
 
   @impl true
@@ -50,6 +72,15 @@ defmodule ItsmBackend.AIClient.Mock do
     {:ok,
      %{
        status: "ok",
+       service: "mock_ai"
+     }}
+  end
+
+  @impl true
+  def ready do
+    {:ok,
+     %{
+       status: "ready",
        service: "mock_ai"
      }}
   end
