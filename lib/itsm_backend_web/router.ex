@@ -17,5 +17,13 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/approvals/:approval_id/approve",
          ApprovalController,
          :approve
+
+    post "/v1/jobs",
+         JobController,
+         :create
+
+    get "/v1/jobs/:id",
+        JobController,
+        :show
   end
 end

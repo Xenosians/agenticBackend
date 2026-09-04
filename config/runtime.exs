@@ -100,4 +100,16 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
+
+  config :itsm_backend,
+    ai_client: ItsmBackend.AIClient.HTTP,
+    ai_service_url: "http://127.0.0.1:8000"
+
+  config :itsm_backend,
+         :surrealdb,
+         url: "http://127.0.0.1:8001",
+         namespace: "itsm",
+         database: "itsm",
+         username: "itsm_app",
+         password: "itsm_dev_2026"
 end

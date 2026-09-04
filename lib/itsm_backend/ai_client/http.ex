@@ -32,9 +32,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def approve(approval_id) do
-    case Req.post(
-           "#{base_url()}/v1/approvals/#{approval_id}/approve"
-         ) do
+    case Req.post("#{base_url()}/v1/approvals/#{approval_id}/approve") do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
         {:ok, body}
@@ -49,9 +47,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def health do
-    case Req.get(
-           "#{base_url()}/health"
-         ) do
+    case Req.get("#{base_url()}/health") do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
         {:ok, body}

@@ -35,7 +35,6 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
-
 config :itsm_backend,
   ai_client: ItsmBackend.AIClient.HTTP,
   ai_service_url: "http://127.0.0.1:8000"
@@ -46,3 +45,15 @@ config :phoenix, :json_library, Jason
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
+
+config :itsm_backend,
+  ai_client: ItsmBackend.AIClient.HTTP,
+  ai_service_url: "http://127.0.0.1:8000"
+
+config :itsm_backend,
+       :surrealdb,
+       url: "http://127.0.0.1:8001",
+       namespace: "itsm",
+       database: "itsm",
+       username: "itsm_app",
+       password: "itsm_dev_2026"
