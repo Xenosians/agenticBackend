@@ -1,0 +1,23 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+
+    container_name: itsm-surrealdb
+
+    command:
+      - start
+      - --log
+      - info
+      - --user
+      - itsm_app
+      - --pass
+      - itsm_dev_2026
+      - rocksdb:/data/database.db
+
+    ports:
+      - "8001:8000"
+
+    volumes:
+      - ./surreal_data:/data
+
+    restart: unless-stopped
