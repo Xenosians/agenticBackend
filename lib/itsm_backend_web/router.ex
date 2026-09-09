@@ -16,6 +16,7 @@ defmodule ItsmBackendWeb.Router do
          AgentController,
          :run
 
+    # Transitional direct approval endpoint.
     post "/v1/approvals/:approval_id/approve",
          ApprovalController,
          :approve
@@ -27,6 +28,10 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/jobs/:id",
         JobController,
         :show
+
+    post "/v1/jobs/:id/approve",
+         JobController,
+         :approve
 
     post "/internal/v1/jobs/:id/completion",
          JobCompletionController,

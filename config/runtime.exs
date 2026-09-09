@@ -102,14 +102,30 @@ if config_env() == :prod do
   # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
 
   config :itsm_backend,
-    ai_client: ItsmBackend.AIClient.HTTP,
-    ai_service_url: "http://127.0.0.1:8000"
-
-  config :itsm_backend,
-         :surrealdb,
-         url: "http://127.0.0.1:8001",
-         namespace: "itsm",
-         database: "itsm",
-         username: "itsm_app",
-         password: "itsm_dev_2026"
+       :surrealdb,
+       url:
+         System.get_env(
+           "SURREALDB_URL",
+           "http://127.0.0.1:8001"
+         ),
+       namespace:
+         System.get_env(
+           "SURREALDB_NAMESPACE",
+           "itsm"
+         ),
+       database:
+         System.get_env(
+           "SURREALDB_DATABASE",
+           "itsm"
+         ),
+       username:
+         System.get_env(
+           "SURREALDB_USERNAME",
+           "root"
+         ),
+       password:
+         System.get_env(
+           "SURREALDB_PASSWORD",
+           "root"
+         )
 end
