@@ -12,6 +12,11 @@ defmodule ItsmBackend.Jobs do
     "waiting_approval"
   ]
 
+  @terminal_statuses [
+    "completed",
+    "failed"
+  ]
+
   # ------------------------------------------------------------
   # Create
   # ------------------------------------------------------------
@@ -59,8 +64,33 @@ defmodule ItsmBackend.Jobs do
   @spec claim_oldest(pos_integer()) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def claim_oldest(lease_seconds \\ 300) do
-    SurrealStore.claim_oldest(lease_seconds)
+  def claim_oldest(
+        lease_seconds \\ 300
+      ) do
+    SurrealStore.claim_oldest(
+      lease_seconds
+    )
+  end
+
+  # ------------------------------------------------------------
+  # Fail-closed lease recovery
+  # ------------------------------------------------------------
+
+  @spec fail_processing_if_current(
+          Job.t(),
+          String.t()
+        ) ::
+          {:ok, Job.t() | nil}
+          | {:error, term()}
+  def fail_processing_if_current(
+        %Job{} = job,
+        error
+      )
+      when is_binary(error) do
+    SurrealStore.fail_processing_if_current(
+      job,
+      error
+    )
   end
 
   # ------------------------------------------------------------
@@ -85,7 +115,8 @@ defmodule ItsmBackend.Jobs do
       when is_binary(job_id) and
              is_integer(attempt) and
              attempt > 0 and
-             completion_status in @completion_statuses and
+             completion_status
+             in @completion_statuses and
              is_map(attrs) do
     with {:ok, job} <-
            get(job_id),
@@ -116,20 +147,58 @@ defmodule ItsmBackend.Jobs do
   end
 
   # ------------------------------------------------------------
+  # Exact duplicate completion
+  # ------------------------------------------------------------
+
+  defp apply_completion_to_job(
+         %Job{
+           status: status
+         } = job,
+         status,
+         _attrs
+       )
+       when status
+            in @completion_statuses do
+    {:ok, job, :duplicate}
+  end
+
+  # ------------------------------------------------------------
+  # Terminal state wins
+  #
+  # A late completion from the same attempt must never overwrite
+  # an already-terminal durable decision.
+  #
+  # This is particularly important after lease recovery:
+  #
+  # processing
+  #   -> lease expires
+  #   -> Phoenix atomically records failed
+  #   -> late Python completion arrives
+  #
+  # Phoenix acknowledges the stale terminal delivery so the AI
+  # outbox can stop retrying it, while keeping the stored terminal
+  # state unchanged.
+  # ------------------------------------------------------------
+
+  defp apply_completion_to_job(
+         %Job{
+           status: status
+         } = job,
+         _completion_status,
+         _attrs
+       )
+       when status in @terminal_statuses do
+    {:ok, job, :duplicate}
+  end
+
+  # ------------------------------------------------------------
   # Successful completion
   # ------------------------------------------------------------
 
   defp apply_completion_to_job(
-         %Job{status: status} = job,
-         status,
-         _attrs
-       )
-       when status in @completion_statuses do
-    {:ok, job, :duplicate}
-  end
-
-  defp apply_completion_to_job(
-         %Job{status: "processing"} = job,
+         %Job{
+           status: "processing"
+         } = job,
          "completed",
          attrs
        ) do
@@ -142,7 +211,11 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(normalize_result(result))
+      |> Job.put_result(
+        normalize_result(
+          result
+        )
+      )
       |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
@@ -151,7 +224,9 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -161,7 +236,9 @@ defmodule ItsmBackend.Jobs do
   # ------------------------------------------------------------
 
   defp apply_completion_to_job(
-         %Job{status: "processing"} = job,
+         %Job{
+           status: "processing"
+         } = job,
          "waiting_approval",
          attrs
        ) do
@@ -174,7 +251,11 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(normalize_result(result))
+      |> Job.put_result(
+        normalize_result(
+          result
+        )
+      )
       |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
@@ -183,7 +264,9 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -193,7 +276,9 @@ defmodule ItsmBackend.Jobs do
   # ------------------------------------------------------------
 
   defp apply_completion_to_job(
-         %Job{status: "processing"} = job,
+         %Job{
+           status: "processing"
+         } = job,
          "failed",
          attrs
        ) do
@@ -205,9 +290,16 @@ defmodule ItsmBackend.Jobs do
       )
 
     job =
-      job
-      |> Job.put_error(error)
-      |> put_metadata(attrs)
+      Job.put_error(
+        job,
+        error
+      )
+
+    job =
+      put_metadata(
+        job,
+        attrs
+      )
 
     with {:ok, transitioned_job} <-
            Job.transition(
@@ -215,7 +307,9 @@ defmodule ItsmBackend.Jobs do
              "failed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -242,14 +336,18 @@ defmodule ItsmBackend.Jobs do
   # ------------------------------------------------------------
 
   defp verify_attempt(
-         %Job{attempts: attempt},
+         %Job{
+           attempts: attempt
+         },
          attempt
        ) do
     :ok
   end
 
   defp verify_attempt(
-         %Job{attempts: current_attempt},
+         %Job{
+           attempts: current_attempt
+         },
          incoming_attempt
        ) do
     {:error,

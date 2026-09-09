@@ -12,9 +12,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   3. Sends the job to FastAPI.
   4. Expects a 202 Accepted acknowledgement.
   5. Keeps at most one locally tracked in-flight job.
+  6. Observes durable completion state.
+  7. Fails expired processing attempts closed without automatic
+     redispatch.
 
-  Completion handling is performed by the second handshake,
-  which will be added separately.
+  Completion handling itself is performed through the durable
+  AI completion callback.
   """
 
   use GenServer
@@ -23,6 +26,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
+
+  @lease_expired_error (
+    "Processing lease expired before durable AI completion. " <>
+      "Execution outcome is ambiguous, so automatic retry " <>
+      "was suppressed."
+  )
 
   # ------------------------------------------------------------
   # Public API
@@ -78,7 +87,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
     next_state =
       case state.inflight_job_id do
         nil ->
-          maybe_dispatch(state)
+          maybe_dispatch(
+            state
+          )
 
         job_id ->
           check_inflight(
@@ -87,7 +98,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           )
       end
 
-    schedule_tick(next_state.poll_interval_ms)
+    schedule_tick(
+      next_state.poll_interval_ms
+    )
 
     {:noreply, next_state}
   end
@@ -124,7 +137,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
          ai_client,
          state
        ) do
-    case Jobs.claim_oldest(state.lease_seconds) do
+    case Jobs.claim_oldest(
+           state.lease_seconds
+         ) do
       {:ok, nil} ->
         state
 
@@ -170,7 +185,8 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
         %{
           state
-          | inflight_job_id: job.id
+          | inflight_job_id:
+              job.id
         }
 
       {:error,
@@ -201,7 +217,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         # Do NOT immediately requeue here because that could
         # execute externally-visible operations twice.
         #
-        # Leave the job processing until its lease expires.
+        # Leave the durable job in processing until its lease
+        # expires. Lease recovery will then fail the exact
+        # processing attempt closed rather than redispatching it.
         Logger.error(
           "Ambiguous AI dispatch failure " <>
             "job_id=#{job.id} " <>
@@ -210,7 +228,8 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
         %{
           state
-          | inflight_job_id: job.id
+          | inflight_job_id:
+              job.id
         }
     end
   end
@@ -229,15 +248,10 @@ defmodule ItsmBackend.Jobs.QueueWorker do
          status: "processing"
        } = job} ->
         if lease_expired?(job) do
-          Logger.warning(
-            "AI job lease expired " <>
-              "job_id=#{job.id}"
-          )
-
-          %{
+          recover_expired_processing(
+            job,
             state
-            | inflight_job_id: nil
-          }
+          )
         else
           state
         end
@@ -277,17 +291,91 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   end
 
   # ------------------------------------------------------------
-  # Safe requeue
+  # Expired processing recovery
   # ------------------------------------------------------------
 
-  defp safely_requeue(%Job{} = job) do
+  defp recover_expired_processing(
+         %Job{} = job,
+         state
+       ) do
+    Logger.warning(
+      "AI job lease expired " <>
+        "job_id=#{job.id} " <>
+        "attempt=#{job.attempts}"
+    )
+
+    case Jobs.fail_processing_if_current(
+           job,
+           @lease_expired_error
+         ) do
+      {:ok,
+       %Job{
+         status: "failed"
+       } = failed_job} ->
+        Logger.warning(
+          "Expired AI job failed closed " <>
+            "job_id=#{failed_job.id} " <>
+            "attempt=#{failed_job.attempts}"
+        )
+
+        %{
+          state
+          | inflight_job_id: nil
+        }
+
+      {:ok, nil} ->
+        # The compare-and-set did not match.
+        #
+        # Something changed the durable row after this worker
+        # read it. Never overwrite that newer state.
+        Logger.info(
+          "Lease recovery skipped because durable job " <>
+            "state changed concurrently " <>
+            "job_id=#{job.id} " <>
+            "attempt=#{job.attempts}"
+        )
+
+        %{
+          state
+          | inflight_job_id: nil
+        }
+
+      {:error, reason} ->
+        # Persistence failed. Keep tracking the job locally so
+        # the next poll can retry recovery rather than silently
+        # abandoning a still-processing durable row.
+        Logger.error(
+          "Failed to persist lease-expiry recovery " <>
+            "job_id=#{job.id} " <>
+            "attempt=#{job.attempts} " <>
+            "reason=#{inspect(reason)}"
+        )
+
+        state
+    end
+  end
+
+  # ------------------------------------------------------------
+  # Safe requeue
+  #
+  # Used only when Python explicitly rejected the dispatch with
+  # a deterministic 4xx response.
+  #
+  # Ambiguous network/server failures are never requeued here.
+  # ------------------------------------------------------------
+
+  defp safely_requeue(
+         %Job{} = job
+       ) do
     with {:ok, pending_job} <-
            Job.transition(
              job,
              "pending"
            ),
          {:ok, _stored_job} <-
-           Jobs.update(pending_job) do
+           Jobs.update(
+             pending_job
+           ) do
       :ok
     else
       {:error, reason} ->
@@ -305,15 +393,20 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # Lease helpers
   # ------------------------------------------------------------
 
-  defp lease_expired?(%Job{
-         lease_expires_at: nil
-       }) do
+  defp lease_expired?(
+         %Job{
+           lease_expires_at: nil
+         }
+       ) do
     false
   end
 
-  defp lease_expired?(%Job{
-         lease_expires_at: %DateTime{} = expires_at
-       }) do
+  defp lease_expired?(
+         %Job{
+           lease_expires_at:
+             %DateTime{} = expires_at
+         }
+       ) do
     now =
       DateTime.utc_now()
 
@@ -327,7 +420,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # Scheduling
   # ------------------------------------------------------------
 
-  defp schedule_tick(poll_interval_ms) do
+  defp schedule_tick(
+         poll_interval_ms
+       ) do
     Process.send_after(
       self(),
       :tick,
