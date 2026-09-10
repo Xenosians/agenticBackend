@@ -57,18 +57,5 @@ config :phoenix,
        :json_library,
        Jason
 
-# ------------------------------------------------------------
-# SurrealDB
-#
-# Transitional until the database configuration slice.
-# ------------------------------------------------------------
-
-config :itsm_backend,
-       :surrealdb,
-       url: "http://127.0.0.1:8001",
-       namespace: "itsm",
-       database: "itsm",
-       username: "itsm_app",
-       password: "itsm_dev_2026"
-
+# Environment-specific configuration must remain last.
 import_config "#{config_env()}.exs"

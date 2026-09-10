@@ -160,6 +160,40 @@ if config_env() == :prod do
          :dns_cluster_query,
          System.get_env("DNS_CLUSTER_QUERY")
 
+  # ----------------------------------------------------------
+  # Production SurrealDB
+  #
+  # No deployment or credential defaults are permitted here.
+  # RuntimeConfig.surrealdb!/0 performs final semantic
+  # validation after runtime environment ingress.
+  # ----------------------------------------------------------
+
+  required_surreal_env = fn variable ->
+    case System.get_env(variable) do
+      nil ->
+        raise """
+        environment variable #{variable} is missing.
+        """
+
+      value ->
+        if String.trim(value) == "" do
+          raise """
+          environment variable #{variable} must not be blank.
+          """
+        end
+
+        value
+    end
+  end
+
+  config :itsm_backend,
+         :surrealdb,
+         url: required_surreal_env.("SURREALDB_URL"),
+         namespace: required_surreal_env.("SURREALDB_NAMESPACE"),
+         database: required_surreal_env.("SURREALDB_DATABASE"),
+         username: required_surreal_env.("SURREALDB_USERNAME"),
+         password: required_surreal_env.("SURREALDB_PASSWORD")
+
   config :itsm_backend,
          ItsmBackendWeb.Endpoint,
          url: [
@@ -180,32 +214,4 @@ if config_env() == :prod do
            }
          ],
          secret_key_base: secret_key_base
-
-  config :itsm_backend,
-         :surrealdb,
-         url:
-           System.get_env(
-             "SURREALDB_URL",
-             "http://127.0.0.1:8001"
-           ),
-         namespace:
-           System.get_env(
-             "SURREALDB_NAMESPACE",
-             "itsm"
-           ),
-         database:
-           System.get_env(
-             "SURREALDB_DATABASE",
-             "itsm"
-           ),
-         username:
-           System.get_env(
-             "SURREALDB_USERNAME",
-             "root"
-           ),
-         password:
-           System.get_env(
-             "SURREALDB_PASSWORD",
-             "root"
-           )
 end
