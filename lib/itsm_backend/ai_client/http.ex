@@ -1,6 +1,8 @@
 defmodule ItsmBackend.AIClient.HTTP do
   @behaviour ItsmBackend.AIClient
 
+  alias ItsmBackend.AIClient.JobContract
+
   # ------------------------------------------------------------
   # Configuration
   # ------------------------------------------------------------
@@ -62,14 +64,29 @@ defmodule ItsmBackend.AIClient.HTTP do
         user_id,
         message
       ) do
+    with {:ok, payload} <-
+           JobContract.build_execute_request(
+             job_id,
+             attempt,
+             user_id,
+             message
+           ) do
+      execute_validated_job(
+        job_id,
+        attempt,
+        payload
+      )
+    end
+  end
+
+  defp execute_validated_job(
+         job_id,
+         attempt,
+         payload
+       ) do
     case Req.post(
            "#{base_url()}/v1/jobs/execute",
-           json: %{
-             job_id: job_id,
-             attempt: attempt,
-             user_id: user_id,
-             message: message
-           },
+           json: payload,
            receive_timeout: 10_000
          ) do
       {:ok,
@@ -77,8 +94,9 @@ defmodule ItsmBackend.AIClient.HTTP do
          status: 202,
          body: body
        }} ->
-        validate_job_ack(
+        JobContract.validate_accepted(
           job_id,
+          attempt,
           body
         )
 
@@ -204,32 +222,5 @@ defmodule ItsmBackend.AIClient.HTTP do
            reason
          }}
     end
-  end
-
-  # ------------------------------------------------------------
-  # Job ACK validation
-  # ------------------------------------------------------------
-
-  defp validate_job_ack(
-         expected_job_id,
-         %{
-           "job_id" => actual_job_id,
-           "status" => "accepted"
-         } = body
-       )
-       when actual_job_id == expected_job_id do
-    {:ok, body}
-  end
-
-  defp validate_job_ack(
-         expected_job_id,
-         body
-       ) do
-    {:error,
-     {
-       :invalid_job_ack,
-       expected_job_id,
-       body
-     }}
   end
 end
