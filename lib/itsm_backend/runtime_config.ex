@@ -21,6 +21,14 @@ defmodule ItsmBackend.RuntimeConfig do
           lease_seconds: pos_integer()
         }
 
+  @type ai_service_config :: %{
+          base_url: String.t(),
+          run_timeout_ms: pos_integer(),
+          execute_timeout_ms: pos_integer(),
+          health_timeout_ms: pos_integer(),
+          ready_timeout_ms: pos_integer()
+        }
+
   # ------------------------------------------------------------
   # Queue worker
   # ------------------------------------------------------------
@@ -49,6 +57,50 @@ defmodule ItsmBackend.RuntimeConfig do
           config,
           :lease_seconds,
           :queue_worker
+        )
+    }
+  end
+
+  # ------------------------------------------------------------
+  # AI service transport
+  # ------------------------------------------------------------
+
+  @spec ai_service!() ::
+          ai_service_config()
+  def ai_service! do
+    config =
+      fetch_keyword_config!(:ai_service)
+
+    %{
+      base_url:
+        fetch_http_url!(
+          config,
+          :base_url,
+          :ai_service
+        ),
+      run_timeout_ms:
+        fetch_positive_integer!(
+          config,
+          :run_timeout_ms,
+          :ai_service
+        ),
+      execute_timeout_ms:
+        fetch_positive_integer!(
+          config,
+          :execute_timeout_ms,
+          :ai_service
+        ),
+      health_timeout_ms:
+        fetch_positive_integer!(
+          config,
+          :health_timeout_ms,
+          :ai_service
+        ),
+      ready_timeout_ms:
+        fetch_positive_integer!(
+          config,
+          :ready_timeout_ms,
+          :ai_service
         )
     }
   end
@@ -157,6 +209,92 @@ defmodule ItsmBackend.RuntimeConfig do
           config_key,
           field
         )
+    end
+  end
+
+  defp fetch_non_empty_string!(
+         config,
+         field,
+         config_key
+       ) do
+    case Keyword.fetch(
+           config,
+           field
+         ) do
+      {:ok, value}
+      when is_binary(value) ->
+        value =
+          String.trim(value)
+
+        if value == "" do
+          raise Error,
+            message:
+              "expected " <>
+                inspect_config_path(
+                  config_key,
+                  field
+                ) <>
+                " to be a non-empty string"
+        else
+          value
+        end
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected " <>
+              inspect_config_path(
+                config_key,
+                field
+              ) <>
+              " to be a string, got: " <>
+              inspect(value)
+
+      :error ->
+        raise_missing_field!(
+          config_key,
+          field
+        )
+    end
+  end
+
+  defp fetch_http_url!(
+         config,
+         field,
+         config_key
+       ) do
+    value =
+      fetch_non_empty_string!(
+        config,
+        field,
+        config_key
+      )
+
+    uri =
+      URI.parse(value)
+
+    if uri.scheme in [
+         "http",
+         "https"
+       ] and
+         is_binary(uri.host) and
+         uri.host != "" and
+         is_nil(uri.query) and
+         is_nil(uri.fragment) do
+      String.trim_trailing(
+        value,
+        "/"
+      )
+    else
+      raise Error,
+        message:
+          "expected " <>
+            inspect_config_path(
+              config_key,
+              field
+            ) <>
+            " to be an HTTP(S) base URL, got: " <>
+            inspect(value)
     end
   end
 

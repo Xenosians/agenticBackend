@@ -4,16 +4,28 @@ defmodule ItsmBackend.AIClient.HTTPTest do
   alias ItsmBackend.AIClient.HTTP
 
   # ------------------------------------------------------------
-  # Req transport isolation
-  #
-  # AIClient.HTTP currently calls Req directly.
-  # Req.Test lets us exercise that real path without opening
-  # a socket or starting FastAPI.
+  # Test configuration + Req transport isolation
   # ------------------------------------------------------------
 
   setup context do
     previous_options =
       Req.default_options()
+
+    previous_ai_service =
+      Application.get_env(
+        :itsm_backend,
+        :ai_service
+      )
+
+    Application.put_env(
+      :itsm_backend,
+      :ai_service,
+      base_url: "http://ai-service.test",
+      run_timeout_ms: 120_000,
+      execute_timeout_ms: 8_000,
+      health_timeout_ms: 2_000,
+      ready_timeout_ms: 3_000
+    )
 
     Req.Test.set_req_test_from_context(context)
 
@@ -29,6 +41,11 @@ defmodule ItsmBackend.AIClient.HTTPTest do
 
     on_exit(fn ->
       Req.default_options(previous_options)
+
+      restore_config(
+        :ai_service,
+        previous_ai_service
+      )
     end)
 
     :ok
@@ -85,12 +102,6 @@ defmodule ItsmBackend.AIClient.HTTPTest do
 
   # ------------------------------------------------------------
   # Invalid outbound request
-  #
-  # There is intentionally no Req.Test stub here.
-  #
-  # If HTTP.execute_job/4 attempts network transport despite the
-  # invalid contract, Req.Test will fail the test because no stub
-  # exists.
   # ------------------------------------------------------------
 
   test "execute_job rejects an invalid request before transport" do
@@ -200,6 +211,31 @@ defmodule ItsmBackend.AIClient.HTTPTest do
     |> Plug.Conn.send_resp(
       status,
       encoded
+    )
+  end
+
+  # ------------------------------------------------------------
+  # Configuration restoration
+  # ------------------------------------------------------------
+
+  defp restore_config(
+         key,
+         nil
+       ) do
+    Application.delete_env(
+      :itsm_backend,
+      key
+    )
+  end
+
+  defp restore_config(
+         key,
+         value
+       ) do
+    Application.put_env(
+      :itsm_backend,
+      key,
+      value
     )
   end
 end

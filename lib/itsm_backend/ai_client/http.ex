@@ -2,17 +2,7 @@ defmodule ItsmBackend.AIClient.HTTP do
   @behaviour ItsmBackend.AIClient
 
   alias ItsmBackend.AIClient.JobContract
-
-  # ------------------------------------------------------------
-  # Configuration
-  # ------------------------------------------------------------
-
-  defp base_url do
-    Application.fetch_env!(
-      :itsm_backend,
-      :ai_service_url
-    )
-  end
+  alias ItsmBackend.RuntimeConfig
 
   # ------------------------------------------------------------
   # Transitional synchronous execution
@@ -23,13 +13,16 @@ defmodule ItsmBackend.AIClient.HTTP do
         user_id,
         message
       ) do
+    config =
+      RuntimeConfig.ai_service!()
+
     case Req.post(
-           "#{base_url()}/v1/agent/run",
+           "#{config.base_url}/v1/agent/run",
            json: %{
              user_id: user_id,
              message: message
            },
-           receive_timeout: 300_000
+           receive_timeout: config.run_timeout_ms
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
@@ -84,10 +77,13 @@ defmodule ItsmBackend.AIClient.HTTP do
          attempt,
          payload
        ) do
+    config =
+      RuntimeConfig.ai_service!()
+
     case Req.post(
-           "#{base_url()}/v1/jobs/execute",
+           "#{config.base_url}/v1/jobs/execute",
            json: payload,
-           receive_timeout: 10_000
+           receive_timeout: config.execute_timeout_ms
          ) do
       {:ok,
        %{
@@ -140,7 +136,10 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def approve(approval_id) do
-    case Req.post("#{base_url()}/v1/approvals/#{approval_id}/approve") do
+    config =
+      RuntimeConfig.ai_service!()
+
+    case Req.post("#{config.base_url}/v1/approvals/#{approval_id}/approve") do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
         {:ok, body}
@@ -168,9 +167,12 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def health do
+    config =
+      RuntimeConfig.ai_service!()
+
     case Req.get(
-           "#{base_url()}/health",
-           receive_timeout: 5_000
+           "#{config.base_url}/health",
+           receive_timeout: config.health_timeout_ms
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
@@ -199,9 +201,12 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def ready do
+    config =
+      RuntimeConfig.ai_service!()
+
     case Req.get(
-           "#{base_url()}/ready",
-           receive_timeout: 5_000
+           "#{config.base_url}/ready",
+           receive_timeout: config.ready_timeout_ms
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
