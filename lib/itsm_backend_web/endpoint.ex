@@ -78,14 +78,13 @@ defmodule ItsmBackendWeb.Endpoint do
     pass: [
       "*/*"
     ],
-    json_decoder:
-      Phoenix.json_library()
+    json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride
   plug Plug.Head
 
   plug Plug.Session,
-    @session_options
+       @session_options
 
   plug ItsmBackendWeb.Router
 end

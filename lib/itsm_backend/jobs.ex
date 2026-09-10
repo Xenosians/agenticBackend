@@ -64,12 +64,19 @@ defmodule ItsmBackend.Jobs do
   @spec claim_oldest(pos_integer()) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def claim_oldest(
-        lease_seconds \\ 300
-      ) do
-    SurrealStore.claim_oldest(
-      lease_seconds
-    )
+  def claim_oldest(lease_seconds \\ 300) do
+    SurrealStore.claim_oldest(lease_seconds)
+  end
+
+  # ------------------------------------------------------------
+  # Expired processing discovery
+  # ------------------------------------------------------------
+
+  @spec find_oldest_expired_processing(DateTime.t()) ::
+          {:ok, Job.t() | nil}
+          | {:error, term()}
+  def find_oldest_expired_processing(now \\ DateTime.utc_now()) do
+    SurrealStore.find_oldest_expired_processing(now)
   end
 
   # ------------------------------------------------------------
@@ -115,8 +122,7 @@ defmodule ItsmBackend.Jobs do
       when is_binary(job_id) and
              is_integer(attempt) and
              attempt > 0 and
-             completion_status
-             in @completion_statuses and
+             completion_status in @completion_statuses and
              is_map(attrs) do
     with {:ok, job} <-
            get(job_id),
@@ -157,27 +163,12 @@ defmodule ItsmBackend.Jobs do
          status,
          _attrs
        )
-       when status
-            in @completion_statuses do
+       when status in @completion_statuses do
     {:ok, job, :duplicate}
   end
 
   # ------------------------------------------------------------
   # Terminal state wins
-  #
-  # A late completion from the same attempt must never overwrite
-  # an already-terminal durable decision.
-  #
-  # This is particularly important after lease recovery:
-  #
-  # processing
-  #   -> lease expires
-  #   -> Phoenix atomically records failed
-  #   -> late Python completion arrives
-  #
-  # Phoenix acknowledges the stale terminal delivery so the AI
-  # outbox can stop retrying it, while keeping the stored terminal
-  # state unchanged.
   # ------------------------------------------------------------
 
   defp apply_completion_to_job(
@@ -211,11 +202,7 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(
-        normalize_result(
-          result
-        )
-      )
+      |> Job.put_result(normalize_result(result))
       |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
@@ -224,9 +211,7 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end
@@ -251,11 +236,7 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(
-        normalize_result(
-          result
-        )
-      )
+      |> Job.put_result(normalize_result(result))
       |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
@@ -264,9 +245,7 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end
@@ -307,9 +286,7 @@ defmodule ItsmBackend.Jobs do
              "failed"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end

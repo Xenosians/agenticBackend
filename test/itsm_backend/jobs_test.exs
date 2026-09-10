@@ -22,9 +22,7 @@ defmodule ItsmBackend.JobsTest do
       )
 
     {:ok, stored_processing} =
-      SurrealStore.update(
-        processing
-      )
+      SurrealStore.update(processing)
 
     recovery_error =
       "Processing lease expired before durable AI completion. " <>
@@ -50,11 +48,9 @@ defmodule ItsmBackend.JobsTest do
             "- Branch: main\n" <>
             "- Working tree: clean"
       },
-      "selected_agent" =>
-        "developer-specialist",
+      "selected_agent" => "developer-specialist",
       "proposed_tool" => %{
-        "tool" =>
-          "workspace_git_status",
+        "tool" => "workspace_git_status",
         "arguments" => %{}
       }
     }
@@ -112,9 +108,7 @@ defmodule ItsmBackend.JobsTest do
       )
 
     {:ok, stored_processing} =
-      SurrealStore.update(
-        processing
-      )
+      SurrealStore.update(processing)
 
     assert {:ok, failed} =
              Jobs.fail_processing_if_current(
@@ -140,8 +134,7 @@ defmodule ItsmBackend.JobsTest do
                "completed",
                %{
                  "result" => %{
-                   "answer" =>
-                     "late result"
+                   "answer" => "late result"
                  }
                }
              )
