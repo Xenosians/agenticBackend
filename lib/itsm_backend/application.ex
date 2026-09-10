@@ -15,11 +15,7 @@ defmodule ItsmBackend.Application do
         ItsmBackendWeb.Telemetry,
         {
           DNSCluster,
-          query:
-            Application.get_env(
-              :itsm_backend,
-              :dns_cluster_query
-            ) || :ignore
+          query: RuntimeConfig.dns_cluster_query!()
         },
         {
           Phoenix.PubSub,

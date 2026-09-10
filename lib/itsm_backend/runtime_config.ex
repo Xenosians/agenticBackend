@@ -111,6 +111,49 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
+  # DNS cluster
+  #
+  # DNS clustering is optional. Absence means clustering is
+  # intentionally disabled for the current deployment.
+  # ------------------------------------------------------------
+
+  @spec dns_cluster_query!() ::
+          String.t() | :ignore
+  def dns_cluster_query! do
+    case Application.fetch_env(
+           :itsm_backend,
+           :dns_cluster_query
+         ) do
+      :error ->
+        :ignore
+
+      {:ok, nil} ->
+        :ignore
+
+      {:ok, query}
+      when is_binary(query) ->
+        normalized =
+          String.trim(query)
+
+        if normalized == "" do
+          raise Error,
+            message:
+              "expected :itsm_backend.dns_cluster_query " <>
+                "to be a non-empty string when configured"
+        else
+          normalized
+        end
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected :itsm_backend.dns_cluster_query " <>
+              "to be a string or nil, got: " <>
+              inspect(value)
+    end
+  end
+
+  # ------------------------------------------------------------
   # CORS
   # ------------------------------------------------------------
 
