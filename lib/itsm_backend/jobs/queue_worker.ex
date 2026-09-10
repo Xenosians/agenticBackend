@@ -53,16 +53,14 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   def init(opts) do
     state = %{
       poll_interval_ms:
-        Keyword.get(
+        Keyword.fetch!(
           opts,
-          :poll_interval_ms,
-          1_000
+          :poll_interval_ms
         ),
       lease_seconds:
-        Keyword.get(
+        Keyword.fetch!(
           opts,
-          :lease_seconds,
-          300
+          :lease_seconds
         ),
       inflight_job_id: nil
     }
@@ -103,12 +101,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   # ------------------------------------------------------------
   # Idle reconciliation
-  #
-  # A new Phoenix instance starts with no local inflight state.
-  # Therefore durable expired processing attempts must be
-  # discovered from SurrealDB before new pending work is claimed.
-  #
-  # Recovery is independent from AI readiness.
   # ------------------------------------------------------------
 
   defp reconcile_or_dispatch(state) do
@@ -242,14 +234,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         state
 
       {:error, reason} ->
-        # A network/server failure is ambiguous.
-        #
-        # Python may have accepted the request even when Phoenix
-        # did not receive the acknowledgement. Requeueing here
-        # could therefore execute externally-visible work twice.
-        #
-        # Keep the durable job in processing. Lease recovery will
-        # fail the exact attempt closed if no completion arrives.
         Logger.error(
           "Ambiguous AI dispatch failure " <>
             "job_id=#{job.id} " <>
@@ -321,15 +305,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   # ------------------------------------------------------------
   # Expired processing recovery
-  #
-  # The same function is used for:
-  #
-  # - locally tracked in-flight jobs
-  # - durable processing jobs discovered after restart
-  #
-  # The store performs an exact compare-and-set against the
-  # processing attempt snapshot. A late completion therefore
-  # cannot be overwritten by stale recovery state.
   # ------------------------------------------------------------
 
   defp recover_expired_processing(
@@ -362,8 +337,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         }
 
       {:ok, nil} ->
-        # Something changed the durable row after discovery/read.
-        # Never overwrite that newer state.
         Logger.info(
           "Lease recovery skipped because durable job " <>
             "state changed concurrently " <>
@@ -377,13 +350,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         }
 
       {:error, reason} ->
-        # Persistence failed.
-        #
-        # For a locally tracked job, retaining state causes the
-        # next poll to retry through check_inflight/2.
-        #
-        # For a restart-discovered job, inflight_job_id is already
-        # nil, so the next idle poll discovers it again.
         Logger.error(
           "Failed to persist lease-expiry recovery " <>
             "job_id=#{job.id} " <>
@@ -397,11 +363,6 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   # ------------------------------------------------------------
   # Safe requeue
-  #
-  # Used only when Python explicitly rejects the dispatch with
-  # a deterministic 4xx response.
-  #
-  # Ambiguous network/server failures are never requeued here.
   # ------------------------------------------------------------
 
   defp safely_requeue(%Job{} = job) do

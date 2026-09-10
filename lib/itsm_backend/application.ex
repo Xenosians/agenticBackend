@@ -3,6 +3,8 @@ defmodule ItsmBackend.Application do
 
   use Application
 
+  alias ItsmBackend.RuntimeConfig
+
   @impl true
   def start(
         _type,
@@ -40,35 +42,21 @@ defmodule ItsmBackend.Application do
     )
   end
 
+  # ------------------------------------------------------------
+  # Queue worker
+  # ------------------------------------------------------------
+
   defp queue_worker_children do
     config =
-      Application.get_env(
-        :itsm_backend,
-        :queue_worker,
-        []
-      )
+      RuntimeConfig.queue_worker!()
 
-    if Keyword.get(
-         config,
-         :enabled,
-         false
-       ) do
+    if config.enabled do
       [
         {
           ItsmBackend.Jobs.QueueWorker,
           [
-            poll_interval_ms:
-              Keyword.get(
-                config,
-                :poll_interval_ms,
-                1_000
-              ),
-            lease_seconds:
-              Keyword.get(
-                config,
-                :lease_seconds,
-                300
-              )
+            poll_interval_ms: config.poll_interval_ms,
+            lease_seconds: config.lease_seconds
           ]
         }
       ]
