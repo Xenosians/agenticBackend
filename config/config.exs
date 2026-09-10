@@ -58,19 +58,6 @@ config :phoenix,
        Jason
 
 # ------------------------------------------------------------
-# Internal service authentication
-#
-# Transitional until the dedicated secret configuration slice.
-# ------------------------------------------------------------
-
-config :itsm_backend,
-  internal_job_token:
-    System.get_env(
-      "ITSM_INTERNAL_JOB_TOKEN",
-      "itsm-dev-internal-2026"
-    )
-
-# ------------------------------------------------------------
 # SurrealDB
 #
 # Transitional until the database configuration slice.

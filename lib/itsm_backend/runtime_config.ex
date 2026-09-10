@@ -41,8 +41,7 @@ defmodule ItsmBackend.RuntimeConfig do
   # AI client
   # ------------------------------------------------------------
 
-  @spec ai_client!() ::
-          module()
+  @spec ai_client!() :: module()
   def ai_client! do
     case Application.fetch_env(
            :itsm_backend,
@@ -68,11 +67,46 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
+  # Internal service authentication
+  # ------------------------------------------------------------
+
+  @spec internal_job_token!() :: String.t()
+  def internal_job_token! do
+    case Application.fetch_env(
+           :itsm_backend,
+           :internal_job_token
+         ) do
+      {:ok, token}
+      when is_binary(token) ->
+        if String.trim(token) == "" do
+          raise Error,
+            message:
+              "expected :itsm_backend.internal_job_token " <>
+                "to be a non-empty string"
+        else
+          token
+        end
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected :itsm_backend.internal_job_token " <>
+              "to be a string, got: " <>
+              inspect(value)
+
+      :error ->
+        raise Error,
+          message:
+            "missing required runtime configuration " <>
+              ":itsm_backend.internal_job_token"
+    end
+  end
+
+  # ------------------------------------------------------------
   # Queue worker
   # ------------------------------------------------------------
 
-  @spec queue_worker!() ::
-          queue_worker_config()
+  @spec queue_worker!() :: queue_worker_config()
   def queue_worker! do
     config =
       fetch_keyword_config!(:queue_worker)
@@ -103,8 +137,7 @@ defmodule ItsmBackend.RuntimeConfig do
   # AI service
   # ------------------------------------------------------------
 
-  @spec ai_service!() ::
-          ai_service_config()
+  @spec ai_service!() :: ai_service_config()
   def ai_service! do
     config =
       fetch_keyword_config!(:ai_service)

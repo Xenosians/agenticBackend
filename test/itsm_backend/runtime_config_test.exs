@@ -66,6 +66,12 @@ defmodule ItsmBackend.RuntimeConfigTest do
         :ai_client
       )
 
+    original_internal_job_token =
+      Application.get_env(
+        :itsm_backend,
+        :internal_job_token
+      )
+
     on_exit(fn ->
       restore_config(
         :queue_worker,
@@ -80,6 +86,11 @@ defmodule ItsmBackend.RuntimeConfigTest do
       restore_config(
         :ai_client,
         original_ai_client
+      )
+
+      restore_config(
+        :internal_job_token,
+        original_internal_job_token
       )
     end)
 
@@ -126,6 +137,62 @@ defmodule ItsmBackend.RuntimeConfigTest do
                  ~r/module/,
                  fn ->
                    RuntimeConfig.ai_client!()
+                 end
+  end
+
+  # ------------------------------------------------------------
+  # Internal service authentication
+  # ------------------------------------------------------------
+
+  test "returns configured internal job token" do
+    Application.put_env(
+      :itsm_backend,
+      :internal_job_token,
+      "test-internal-token"
+    )
+
+    assert RuntimeConfig.internal_job_token!() ==
+             "test-internal-token"
+  end
+
+  test "rejects missing internal job token" do
+    Application.delete_env(
+      :itsm_backend,
+      :internal_job_token
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/internal_job_token/,
+                 fn ->
+                   RuntimeConfig.internal_job_token!()
+                 end
+  end
+
+  test "rejects blank internal job token" do
+    Application.put_env(
+      :itsm_backend,
+      :internal_job_token,
+      "   "
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/non-empty string/,
+                 fn ->
+                   RuntimeConfig.internal_job_token!()
+                 end
+  end
+
+  test "rejects non-string internal job token" do
+    Application.put_env(
+      :itsm_backend,
+      :internal_job_token,
+      123
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/to be a string/,
+                 fn ->
+                   RuntimeConfig.internal_job_token!()
                  end
   end
 

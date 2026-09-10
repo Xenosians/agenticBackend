@@ -3,6 +3,7 @@ defmodule ItsmBackendWeb.JobCompletionController do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.CompletionContract
+  alias ItsmBackend.RuntimeConfig
 
   # ------------------------------------------------------------
   # POST completion callback
@@ -202,10 +203,7 @@ defmodule ItsmBackendWeb.JobCompletionController do
 
   defp authorized?(conn) do
     expected =
-      Application.fetch_env!(
-        :itsm_backend,
-        :internal_job_token
-      )
+      RuntimeConfig.internal_job_token!()
 
     provided =
       conn
