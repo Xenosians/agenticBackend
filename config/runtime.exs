@@ -1,7 +1,48 @@
 import Config
 
 # ------------------------------------------------------------
+# Runtime environment helpers
+# ------------------------------------------------------------
+
+required_env = fn variable ->
+  case System.get_env(variable) do
+    nil ->
+      raise """
+      environment variable #{variable} is missing.
+      """
+
+    value ->
+      if String.trim(value) == "" do
+        raise """
+        environment variable #{variable} must not be blank.
+        """
+      end
+
+      value
+  end
+end
+
+parse_positive_integer_env = fn variable, value ->
+  normalized =
+    String.trim(value)
+
+  case Integer.parse(normalized) do
+    {integer, ""}
+    when integer > 0 ->
+      integer
+
+    _ ->
+      raise """
+      environment variable #{variable} must be a positive integer.
+      """
+  end
+end
+
+# ------------------------------------------------------------
 # Phoenix server
+#
+# Development/test ports live in their environment-specific
+# configuration. Production has no embedded port fallback.
 # ------------------------------------------------------------
 
 if System.get_env("PHX_SERVER") do
@@ -10,91 +51,110 @@ if System.get_env("PHX_SERVER") do
          server: true
 end
 
-config :itsm_backend,
-       ItsmBackendWeb.Endpoint,
-       http: [
-         port:
-           String.to_integer(
-             System.get_env(
-               "PORT",
-               "4000"
-             )
-           )
-       ]
+case {
+  config_env(),
+  System.get_env("PORT")
+} do
+  {:prod, _value} ->
+    value =
+      required_env.("PORT")
+
+    port =
+      parse_positive_integer_env.(
+        "PORT",
+        value
+      )
+
+    config :itsm_backend,
+           ItsmBackendWeb.Endpoint,
+           http: [
+             port: port
+           ]
+
+  {_environment, nil} ->
+    :ok
+
+  {_environment, value} ->
+    port =
+      parse_positive_integer_env.(
+        "PORT",
+        value
+      )
+
+    config :itsm_backend,
+           ItsmBackendWeb.Endpoint,
+           http: [
+             port: port
+           ]
+end
 
 # ------------------------------------------------------------
 # AI service
+#
+# Development/test defaults live in their environment-specific
+# configuration. Production requires every transport value.
+# Non-production environments may override individual values.
 # ------------------------------------------------------------
 
-ai_service_base_url =
-  case {
-    config_env(),
-    System.get_env("AI_SERVICE_URL")
-  } do
-    {:prod, nil} ->
-      raise """
-      environment variable AI_SERVICE_URL is missing.
-      """
+if config_env() == :prod do
+  config :itsm_backend,
+         :ai_service,
+         base_url: required_env.("AI_SERVICE_URL"),
+         run_timeout_ms: required_env.("AI_RUN_TIMEOUT_MS"),
+         execute_timeout_ms: required_env.("AI_EXECUTE_TIMEOUT_MS"),
+         health_timeout_ms: required_env.("AI_HEALTH_TIMEOUT_MS"),
+         ready_timeout_ms: required_env.("AI_READY_TIMEOUT_MS")
+else
+  ai_service_overrides =
+    [
+      base_url: System.get_env("AI_SERVICE_URL"),
+      run_timeout_ms: System.get_env("AI_RUN_TIMEOUT_MS"),
+      execute_timeout_ms: System.get_env("AI_EXECUTE_TIMEOUT_MS"),
+      health_timeout_ms: System.get_env("AI_HEALTH_TIMEOUT_MS"),
+      ready_timeout_ms: System.get_env("AI_READY_TIMEOUT_MS")
+    ]
+    |> Enum.reject(fn {_key, value} ->
+      is_nil(value)
+    end)
 
-    {_environment, nil} ->
-      "http://127.0.0.1:8000"
-
-    {_environment, value} ->
-      value
+  if ai_service_overrides != [] do
+    config :itsm_backend,
+           :ai_service,
+           ai_service_overrides
   end
-
-config :itsm_backend,
-       :ai_service,
-       base_url: ai_service_base_url,
-       run_timeout_ms:
-         System.get_env(
-           "AI_RUN_TIMEOUT_MS",
-           "300000"
-         ),
-       execute_timeout_ms:
-         System.get_env(
-           "AI_EXECUTE_TIMEOUT_MS",
-           "10000"
-         ),
-       health_timeout_ms:
-         System.get_env(
-           "AI_HEALTH_TIMEOUT_MS",
-           "5000"
-         ),
-       ready_timeout_ms:
-         System.get_env(
-           "AI_READY_TIMEOUT_MS",
-           "5000"
-         )
+end
 
 # ------------------------------------------------------------
 # Durable queue worker
+#
+# Development/test defaults live in their environment-specific
+# configuration. Production requires every worker setting.
+# Non-production environments may override individual values.
 # ------------------------------------------------------------
 
-queue_worker_default_enabled =
-  if config_env() == :test do
-    "false"
-  else
-    "true"
-  end
+if config_env() == :prod do
+  config :itsm_backend,
+         :queue_worker,
+         enabled: required_env.("QUEUE_WORKER_ENABLED"),
+         poll_interval_ms: required_env.("QUEUE_WORKER_POLL_INTERVAL_MS"),
+         lease_seconds: required_env.("QUEUE_WORKER_LEASE_SECONDS")
+else
+  queue_worker_overrides =
+    [
+      enabled: System.get_env("QUEUE_WORKER_ENABLED"),
+      poll_interval_ms: System.get_env("QUEUE_WORKER_POLL_INTERVAL_MS"),
+      lease_seconds: System.get_env("QUEUE_WORKER_LEASE_SECONDS")
+    ]
+    |> Enum.reject(fn {_key, value} ->
+      is_nil(value)
+    end)
 
-config :itsm_backend,
-       :queue_worker,
-       enabled:
-         System.get_env(
-           "QUEUE_WORKER_ENABLED",
-           queue_worker_default_enabled
-         ),
-       poll_interval_ms:
-         System.get_env(
-           "QUEUE_WORKER_POLL_INTERVAL_MS",
-           "1000"
-         ),
-       lease_seconds:
-         System.get_env(
-           "QUEUE_WORKER_LEASE_SECONDS",
-           "300"
-         )
+  if queue_worker_overrides != [] do
+    config :itsm_backend,
+           :queue_worker,
+           queue_worker_overrides
+  end
+end
 
 # ------------------------------------------------------------
 # Internal service authentication
@@ -142,7 +202,7 @@ end
 # Browser frontend origins
 #
 # Development/test defaults live in their environment-specific
-# config files. Production must explicitly supply its origins.
+# configuration. Production must explicitly supply its origins.
 #
 # Multiple origins are comma separated.
 # ------------------------------------------------------------
@@ -189,47 +249,30 @@ end
 
 if config_env() == :prod do
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+    required_env.("SECRET_KEY_BASE")
 
   host =
-    System.get_env("PHX_HOST") ||
-      raise """
-      environment variable PHX_HOST is missing.
-      """
+    required_env.("PHX_HOST")
 
   config :itsm_backend,
          :dns_cluster_query,
          System.get_env("DNS_CLUSTER_QUERY")
 
-  required_surreal_env = fn variable ->
-    case System.get_env(variable) do
-      nil ->
-        raise """
-        environment variable #{variable} is missing.
-        """
-
-      value ->
-        if String.trim(value) == "" do
-          raise """
-          environment variable #{variable} must not be blank.
-          """
-        end
-
-        value
-    end
-  end
+  # ----------------------------------------------------------
+  # Production SurrealDB
+  #
+  # No deployment or credential defaults are permitted here.
+  # RuntimeConfig.surrealdb!/0 performs final semantic
+  # validation after runtime environment ingress.
+  # ----------------------------------------------------------
 
   config :itsm_backend,
          :surrealdb,
-         url: required_surreal_env.("SURREALDB_URL"),
-         namespace: required_surreal_env.("SURREALDB_NAMESPACE"),
-         database: required_surreal_env.("SURREALDB_DATABASE"),
-         username: required_surreal_env.("SURREALDB_USERNAME"),
-         password: required_surreal_env.("SURREALDB_PASSWORD")
+         url: required_env.("SURREALDB_URL"),
+         namespace: required_env.("SURREALDB_NAMESPACE"),
+         database: required_env.("SURREALDB_DATABASE"),
+         username: required_env.("SURREALDB_USERNAME"),
+         password: required_env.("SURREALDB_PASSWORD")
 
   config :itsm_backend,
          ItsmBackendWeb.Endpoint,

@@ -5,6 +5,8 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Jobs.QueueWorker
 
+  @test_cleanup_error "Expired processing row cleaned during restart recovery test setup."
+
   # ============================================================
   # Offline AI client
   #
@@ -65,6 +67,8 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
       :ai_client,
       OfflineAIClient
     )
+
+    drain_expired_processing()
 
     on_exit(fn ->
       restore_env(
@@ -172,6 +176,49 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
   end
 
   # ============================================================
+  # Durable test isolation
+  #
+  # The test SurrealDB instance persists across test runs.
+  # Previous interrupted tests can leave expired processing rows
+  # that a fresh QueueWorker would legitimately recover first.
+  #
+  # Clean only rows that are already expired, using the same
+  # production compare-and-set recovery primitive.
+  # ============================================================
+
+  defp drain_expired_processing do
+    now =
+      DateTime.utc_now()
+      |> DateTime.truncate(:microsecond)
+
+    case Jobs.find_oldest_expired_processing(now) do
+      {:ok, nil} ->
+        :ok
+
+      {:ok, %Job{} = expired_job} ->
+        case Jobs.fail_processing_if_current(
+               expired_job,
+               @test_cleanup_error
+             ) do
+          {:ok, _result} ->
+            drain_expired_processing()
+
+          {:error, reason} ->
+            flunk(
+              "failed to clean expired processing row: " <>
+                inspect(reason)
+            )
+        end
+
+      {:error, reason} ->
+        flunk(
+          "failed to discover expired processing rows: " <>
+            inspect(reason)
+        )
+    end
+  end
+
+  # ============================================================
   # Poll helper
   # ============================================================
 
@@ -181,7 +228,8 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
          timeout_ms
        ) do
     deadline =
-      System.monotonic_time(:millisecond) + timeout_ms
+      System.monotonic_time(:millisecond) +
+        timeout_ms
 
     do_wait_for_status(
       job_id,
@@ -223,7 +271,8 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
          expected_status,
          deadline
        ) do
-    if System.monotonic_time(:millisecond) >= deadline do
+    if System.monotonic_time(:millisecond) >=
+         deadline do
       case Jobs.get(job_id) do
         {:ok, %Job{} = job} ->
           flunk(

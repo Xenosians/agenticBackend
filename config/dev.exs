@@ -1,10 +1,13 @@
 import Config
 
-# For development, we disable any cache and enable
-# debugging and code reloading.
+# ------------------------------------------------------------
+# Phoenix endpoint
+# ------------------------------------------------------------
+
 config :itsm_backend, ItsmBackendWeb.Endpoint,
   http: [
-    ip: {127, 0, 0, 1}
+    ip: {127, 0, 0, 1},
+    port: 4000
   ],
   check_origin: false,
   code_reloader: true,
@@ -24,6 +27,28 @@ config :itsm_backend,
        ]
 
 # ------------------------------------------------------------
+# Development AI service
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :ai_service,
+       base_url: "http://127.0.0.1:8000",
+       run_timeout_ms: 300_000,
+       execute_timeout_ms: 10_000,
+       health_timeout_ms: 5_000,
+       ready_timeout_ms: 5_000
+
+# ------------------------------------------------------------
+# Development durable queue worker
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :queue_worker,
+       enabled: true,
+       poll_interval_ms: 1_000,
+       lease_seconds: 300
+
+# ------------------------------------------------------------
 # Development SurrealDB
 # ------------------------------------------------------------
 
@@ -34,6 +59,10 @@ config :itsm_backend,
        database: "itsm",
        username: "itsm_app",
        password: "itsm_dev_2026"
+
+# ------------------------------------------------------------
+# Development runtime
+# ------------------------------------------------------------
 
 config :itsm_backend,
   dev_routes: true

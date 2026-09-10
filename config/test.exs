@@ -24,6 +24,28 @@ config :itsm_backend,
        ]
 
 # ------------------------------------------------------------
+# Test AI service
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :ai_service,
+       base_url: "http://127.0.0.1:8000",
+       run_timeout_ms: 300_000,
+       execute_timeout_ms: 10_000,
+       health_timeout_ms: 5_000,
+       ready_timeout_ms: 5_000
+
+# ------------------------------------------------------------
+# Test durable queue worker
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :queue_worker,
+       enabled: false,
+       poll_interval_ms: 1_000,
+       lease_seconds: 300
+
+# ------------------------------------------------------------
 # Test SurrealDB
 # ------------------------------------------------------------
 
