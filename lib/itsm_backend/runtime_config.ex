@@ -37,6 +37,14 @@ defmodule ItsmBackend.RuntimeConfig do
           ready_timeout_ms: pos_integer()
         }
 
+  @type surrealdb_config :: %{
+          url: String.t(),
+          namespace: String.t(),
+          database: String.t(),
+          username: String.t(),
+          password: String.t()
+        }
+
   # ------------------------------------------------------------
   # AI client
   # ------------------------------------------------------------
@@ -172,6 +180,49 @@ defmodule ItsmBackend.RuntimeConfig do
           config,
           :ready_timeout_ms,
           :ai_service
+        )
+    }
+  end
+
+  # ------------------------------------------------------------
+  # SurrealDB
+  # ------------------------------------------------------------
+
+  @spec surrealdb!() :: surrealdb_config()
+  def surrealdb! do
+    config =
+      fetch_keyword_config!(:surrealdb)
+
+    %{
+      url:
+        fetch_http_url!(
+          config,
+          :url,
+          :surrealdb
+        ),
+      namespace:
+        fetch_non_empty_string!(
+          config,
+          :namespace,
+          :surrealdb
+        ),
+      database:
+        fetch_non_empty_string!(
+          config,
+          :database,
+          :surrealdb
+        ),
+      username:
+        fetch_non_empty_string!(
+          config,
+          :username,
+          :surrealdb
+        ),
+      password:
+        fetch_secret_string!(
+          config,
+          :password,
+          :surrealdb
         )
     }
   end
@@ -405,10 +456,53 @@ defmodule ItsmBackend.RuntimeConfig do
          ) do
       {:ok, value}
       when is_binary(value) ->
-        value =
+        normalized =
           String.trim(value)
 
-        if value == "" do
+        if normalized == "" do
+          raise Error,
+            message:
+              "expected " <>
+                inspect_config_path(
+                  config_key,
+                  field
+                ) <>
+                " to be a non-empty string"
+        else
+          normalized
+        end
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected " <>
+              inspect_config_path(
+                config_key,
+                field
+              ) <>
+              " to be a string, got: " <>
+              inspect(value)
+
+      :error ->
+        raise_missing_field!(
+          config_key,
+          field
+        )
+    end
+  end
+
+  defp fetch_secret_string!(
+         config,
+         field,
+         config_key
+       ) do
+    case Keyword.fetch(
+           config,
+           field
+         ) do
+      {:ok, value}
+      when is_binary(value) ->
+        if String.trim(value) == "" do
           raise Error,
             message:
               "expected " <>
