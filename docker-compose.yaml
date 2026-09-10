@@ -1,23 +1,23 @@
 services:
   surrealdb:
-    image: surrealdb/surrealdb:latest
+    image: ${SURREALDB_IMAGE:?SURREALDB_IMAGE is required}
 
-    container_name: itsm-surrealdb
+    container_name: ${SURREALDB_CONTAINER_NAME:?SURREALDB_CONTAINER_NAME is required}
 
     command:
       - start
       - --log
-      - info
+      - ${SURREALDB_LOG_LEVEL:?SURREALDB_LOG_LEVEL is required}
       - --user
-      - itsm_app
+      - ${SURREALDB_USERNAME:?SURREALDB_USERNAME is required}
       - --pass
-      - itsm_dev_2026
+      - ${SURREALDB_PASSWORD:?SURREALDB_PASSWORD is required}
       - rocksdb:/data/database.db
 
     ports:
-      - "8001:8000"
+      - "${SURREALDB_HOST_PORT:?SURREALDB_HOST_PORT is required}:8000"
 
     volumes:
-      - ./surreal_data:/data
+      - "${SURREALDB_DATA_DIR:?SURREALDB_DATA_DIR is required}:/data"
 
-    restart: unless-stopped
+    restart: ${SURREALDB_RESTART_POLICY:?SURREALDB_RESTART_POLICY is required}
