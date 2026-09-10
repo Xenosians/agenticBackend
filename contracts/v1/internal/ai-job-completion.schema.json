@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:internal:ai-job-completion",
+  "title": "AI Job Completion",
+  "description": "Internal durable AI-to-Phoenix completion callback for one execution attempt.",
+  "type": "object",
+  "required": [
+    "attempt",
+    "status",
+    "selected_agent",
+    "proposed_tool"
+  ],
+  "properties": {
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "waiting_approval",
+        "failed"
+      ]
+    },
+    "selected_agent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "proposed_tool": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "When non-null, the object must also satisfy the canonical tool-proposal contract."
+    },
+    "result": {
+      "type": "object"
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "error"
+        ],
+        "not": {
+          "required": [
+            "result"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "waiting_approval"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ],
+        "not": {
+          "required": [
+            "error"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

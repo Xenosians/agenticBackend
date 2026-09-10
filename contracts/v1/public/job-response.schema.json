@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:public:job-response",
+  "title": "Durable Job Response",
+  "description": "Canonical public representation of a Phoenix-owned durable AI job.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "user_id",
+    "conversation_id",
+    "message",
+    "status",
+    "attempts",
+    "created_at",
+    "claimed_at",
+    "lease_expires_at",
+    "completed_at",
+    "selected_agent",
+    "proposed_tool",
+    "result",
+    "error"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "conversation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "waiting_approval",
+        "completed",
+        "failed"
+      ]
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "lease_expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "selected_agent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "proposed_tool": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "When non-null, the object must also satisfy the canonical tool-proposal contract."
+    },
+    "result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

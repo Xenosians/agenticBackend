@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:public:job-create-request",
+  "title": "Create Job Request",
+  "description": "Public request for creating a durable AI job through Phoenix.",
+  "type": "object",
+  "required": [
+    "user_id",
+    "message"
+  ],
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the requesting user."
+    },
+    "conversation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional durable conversation identifier."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "User request to be processed by the AI runtime."
+    }
+  },
+  "additionalProperties": false
+}

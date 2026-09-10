@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:common:tool-proposal",
+  "title": "Tool Proposal",
+  "description": "A structured AI-proposed capability request. This object is a proposal only and does not authorize execution.",
+  "type": "object",
+  "required": [
+    "tool",
+    "arguments"
+  ],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Registered tool capability name."
+    },
+    "arguments": {
+      "type": "object",
+      "description": "Structured arguments proposed for the registered tool.",
+      "additionalProperties": true
+    },
+    "approval_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "Trusted persisted approval identifier when approval is required."
+    }
+  },
+  "additionalProperties": false
+}

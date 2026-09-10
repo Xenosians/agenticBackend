@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:common:error",
+  "title": "Agentic ITSM Error",
+  "description": "Common error response shape used at service boundaries.",
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable machine-readable error code."
+    },
+    "field": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional field associated with a validation error."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional human-readable diagnostic reason."
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional durable or service state associated with the error."
+    },
+    "details": {
+      "type": "object",
+      "description": "Optional structured diagnostic metadata.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

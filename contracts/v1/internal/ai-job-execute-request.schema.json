@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:internal:ai-job-execute-request",
+  "title": "AI Job Execute Request",
+  "description": "Internal Phoenix-to-AI request for executing one durable job attempt.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "attempt",
+    "user_id",
+    "message"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Phoenix-owned durable job identifier."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Durable execution attempt number."
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the user who owns the request."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Message to process for this durable attempt."
+    }
+  },
+  "additionalProperties": false
+}
