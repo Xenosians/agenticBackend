@@ -2,6 +2,7 @@ defmodule ItsmBackendWeb.JobCompletionController do
   use ItsmBackendWeb, :controller
 
   alias ItsmBackend.Jobs
+  alias ItsmBackend.Jobs.CompletionContract
 
   # ------------------------------------------------------------
   # POST completion callback
@@ -10,26 +11,17 @@ defmodule ItsmBackendWeb.JobCompletionController do
   def complete(
         conn,
         %{
-          "id" => job_id,
-          "attempt" => attempt,
-          "status" => status
-        } = params
-      )
-      when is_integer(attempt) do
+          "id" => job_id
+        }
+      ) do
     if authorized?(conn) do
-      handle_completion(
+      validate_and_handle_completion(
         conn,
         job_id,
-        attempt,
-        status,
-        params
+        conn.body_params
       )
     else
-      conn
-      |> put_status(:unauthorized)
-      |> json(%{
-        error: "unauthorized"
-      })
+      unauthorized(conn)
     end
   end
 
@@ -37,11 +29,35 @@ defmodule ItsmBackendWeb.JobCompletionController do
         conn,
         _params
       ) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{
-      error: "invalid_completion_payload"
-    })
+    invalid_completion_payload(conn)
+  end
+
+  # ------------------------------------------------------------
+  # Contract validation
+  # ------------------------------------------------------------
+
+  defp validate_and_handle_completion(
+         conn,
+         job_id,
+         body_params
+       ) do
+    case CompletionContract.validate(body_params) do
+      {:ok,
+       %{
+         "attempt" => attempt,
+         "status" => status
+       } = completion} ->
+        handle_completion(
+          conn,
+          job_id,
+          attempt,
+          status,
+          completion
+        )
+
+      {:error, _reason} ->
+        invalid_completion_payload(conn)
+    end
   end
 
   # ------------------------------------------------------------
@@ -53,22 +69,21 @@ defmodule ItsmBackendWeb.JobCompletionController do
          job_id,
          attempt,
          status,
-         params
+         completion
        ) do
     case Jobs.apply_completion(
            job_id,
            attempt,
            status,
-           params
+           completion
          ) do
       {:ok, job, disposition} ->
-        conn
-        |> put_status(:ok)
-        |> json(%{
-          job_id: job.id,
-          status: job.status,
-          acknowledgement: Atom.to_string(disposition)
-        })
+        send_completion_ack(
+          conn,
+          job.id,
+          job.status,
+          disposition
+        )
 
       {:error, :not_found} ->
         conn
@@ -125,6 +140,60 @@ defmodule ItsmBackendWeb.JobCompletionController do
           reason: inspect(reason)
         })
     end
+  end
+
+  # ------------------------------------------------------------
+  # Completion acknowledgement
+  # ------------------------------------------------------------
+
+  defp send_completion_ack(
+         conn,
+         job_id,
+         status,
+         disposition
+       ) do
+    case CompletionContract.build_ack(
+           job_id,
+           status,
+           disposition
+         ) do
+      {:ok, acknowledgement} ->
+        conn
+        |> put_status(:ok)
+        |> json(acknowledgement)
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{
+          error: "completion_ack_contract_violation",
+          reason: inspect(reason)
+        })
+    end
+  end
+
+  # ------------------------------------------------------------
+  # Invalid payload
+  # ------------------------------------------------------------
+
+  defp invalid_completion_payload(conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{
+      error: "invalid_completion_payload"
+    })
+  end
+
+  # ------------------------------------------------------------
+  # Unauthorized
+  # ------------------------------------------------------------
+
+  defp unauthorized(conn) do
+    conn
+    |> put_status(:unauthorized)
+    |> json(%{
+      error: "unauthorized"
+    })
   end
 
   # ------------------------------------------------------------
