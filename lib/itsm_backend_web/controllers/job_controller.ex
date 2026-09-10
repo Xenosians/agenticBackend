@@ -3,6 +3,7 @@ defmodule ItsmBackendWeb.JobController do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.Jobs.PublicContract
 
   # ------------------------------------------------------------
   # Create durable job
@@ -10,23 +11,56 @@ defmodule ItsmBackendWeb.JobController do
 
   def create(
         conn,
-        params
+        _params
       ) do
-    case Jobs.create(params) do
-      {:ok, job} ->
+    with {:ok, payload} <-
+           PublicContract.validate_create_request(conn.body_params),
+         {:ok, job} <-
+           Jobs.create(payload),
+         {:ok, response} <-
+           PublicContract.build_create_response(
+             job.id,
+             job.status
+           ) do
+      conn
+      |> put_status(:accepted)
+      |> json(response)
+    else
+      {:error,
+       {
+         :invalid_job_create_request,
+         _reason,
+         _details
+       }} ->
         conn
-        |> put_status(:accepted)
+        |> put_status(:unprocessable_entity)
         |> json(%{
-          job_id: job.id,
-          status: job.status
+          error: "invalid_request"
         })
 
-      {:error, {:invalid_field, field}} ->
+      {:error,
+       {
+         :invalid_field,
+         field
+       }} ->
         conn
         |> put_status(:unprocessable_entity)
         |> json(%{
           error: "invalid_request",
           field: field
+        })
+
+      {:error,
+       {
+         :invalid_job_create_response,
+         _reason,
+         _details
+       } = reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{
+          error: "job_creation_contract_violation",
+          reason: inspect(reason)
         })
 
       {:error, reason} ->
@@ -108,7 +142,11 @@ defmodule ItsmBackendWeb.JobController do
           error: "job_not_found"
         })
 
-      {:error, {:job_not_waiting_approval, current_status}} ->
+      {:error,
+       {
+         :job_not_waiting_approval,
+         current_status
+       }} ->
         conn
         |> put_status(:conflict)
         |> json(%{
@@ -123,7 +161,11 @@ defmodule ItsmBackendWeb.JobController do
           error: "approval_id_missing"
         })
 
-      {:error, {:approval_service_failed, reason}} ->
+      {:error,
+       {
+         :approval_service_failed,
+         reason
+       }} ->
         conn
         |> put_status(:bad_gateway)
         |> json(%{
