@@ -28,6 +28,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.RuntimeConfig
 
   @lease_expired_error "Processing lease expired before durable AI completion. " <>
                          "Execution outcome is ambiguous, so automatic retry " <>
@@ -140,10 +141,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   defp maybe_dispatch(state) do
     ai_client =
-      Application.fetch_env!(
-        :itsm_backend,
-        :ai_client
-      )
+      RuntimeConfig.ai_client!()
 
     case ai_client.ready() do
       {:ok, _body} ->

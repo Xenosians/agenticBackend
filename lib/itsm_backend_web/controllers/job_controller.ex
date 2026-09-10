@@ -4,6 +4,7 @@ defmodule ItsmBackendWeb.JobController do
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Jobs.PublicContract
+  alias ItsmBackend.RuntimeConfig
 
   # ------------------------------------------------------------
   # Create durable job
@@ -107,12 +108,6 @@ defmodule ItsmBackendWeb.JobController do
 
   # ------------------------------------------------------------
   # Approve durable job
-  #
-  # The browser identifies the durable job only.
-  #
-  # Phoenix recovers the trusted approval_id from the persisted
-  # AI proposal instead of accepting an arbitrary approval_id
-  # supplied by the client.
   # ------------------------------------------------------------
 
   def approve(
@@ -225,7 +220,9 @@ defmodule ItsmBackendWeb.JobController do
     {:error, :approval_id_missing}
   end
 
-  defp approval_id(%Job{status: status}) do
+  defp approval_id(%Job{
+         status: status
+       }) do
     {:error,
      {
        :job_not_waiting_approval,
@@ -239,10 +236,7 @@ defmodule ItsmBackendWeb.JobController do
 
   defp execute_approval(approval_id) do
     ai_client =
-      Application.fetch_env!(
-        :itsm_backend,
-        :ai_client
-      )
+      RuntimeConfig.ai_client!()
 
     case ai_client.approve(approval_id) do
       {:ok, result}

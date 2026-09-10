@@ -15,6 +15,14 @@ defmodule ItsmBackend.RuntimeConfig do
     defexception [:message]
   end
 
+  @ai_client_callbacks [
+    {:run, 2},
+    {:execute_job, 4},
+    {:approve, 1},
+    {:health, 0},
+    {:ready, 0}
+  ]
+
   @type queue_worker_config :: %{
           enabled: boolean(),
           poll_interval_ms: pos_integer(),
@@ -28,6 +36,36 @@ defmodule ItsmBackend.RuntimeConfig do
           health_timeout_ms: pos_integer(),
           ready_timeout_ms: pos_integer()
         }
+
+  # ------------------------------------------------------------
+  # AI client implementation
+  # ------------------------------------------------------------
+
+  @spec ai_client!() ::
+          module()
+  def ai_client! do
+    case Application.fetch_env(
+           :itsm_backend,
+           :ai_client
+         ) do
+      {:ok, module}
+      when is_atom(module) ->
+        validate_ai_client_module!(module)
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected :itsm_backend.ai_client " <>
+              "to be a module, got: " <>
+              inspect(value)
+
+      :error ->
+        raise Error,
+          message:
+            "missing required runtime configuration " <>
+              ":itsm_backend.ai_client"
+    end
+  end
 
   # ------------------------------------------------------------
   # Queue worker
@@ -103,6 +141,32 @@ defmodule ItsmBackend.RuntimeConfig do
           :ai_service
         )
     }
+  end
+
+  # ------------------------------------------------------------
+  # AI client validation
+  # ------------------------------------------------------------
+
+  defp validate_ai_client_module!(module) do
+    if Code.ensure_loaded?(module) and
+         Enum.all?(
+           @ai_client_callbacks,
+           fn {function, arity} ->
+             function_exported?(
+               module,
+               function,
+               arity
+             )
+           end
+         ) do
+      module
+    else
+      raise Error,
+        message:
+          "expected :itsm_backend.ai_client " <>
+            "to implement the ItsmBackend.AIClient contract, got: " <>
+            inspect(module)
+    end
   end
 
   # ------------------------------------------------------------
