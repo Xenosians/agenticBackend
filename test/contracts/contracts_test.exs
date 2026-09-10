@@ -10,9 +10,12 @@ defmodule ItsmBackend.ContractsTest do
     error: "common/error.schema.json",
     tool_proposal: "common/tool-proposal.schema.json",
     job_create_request: "public/job-create-request.schema.json",
+    job_create_response: "public/job-create-response.schema.json",
     job_response: "public/job-response.schema.json",
     ai_job_execute_request: "internal/ai-job-execute-request.schema.json",
-    ai_job_completion: "internal/ai-job-completion.schema.json"
+    ai_job_accepted: "internal/ai-job-accepted.schema.json",
+    ai_job_completion: "internal/ai-job-completion.schema.json",
+    ai_job_completion_ack: "internal/ai-job-completion-ack.schema.json"
   }
 
   # ------------------------------------------------------------
@@ -57,7 +60,7 @@ defmodule ItsmBackend.ContractsTest do
   end
 
   # ------------------------------------------------------------
-  # Public job creation
+  # Public job creation request
   # ------------------------------------------------------------
 
   test "job-create-request accepts the current public payload" do
@@ -112,28 +115,48 @@ defmodule ItsmBackend.ContractsTest do
   end
 
   # ------------------------------------------------------------
+  # Public job creation response
+  # ------------------------------------------------------------
+
+  test "job-create-response accepts pending acknowledgement" do
+    assert_valid(
+      :job_create_response,
+      %{
+        "job_id" => "job-123",
+        "status" => "pending"
+      }
+    )
+  end
+
+  test "job-create-response rejects non-pending initial state" do
+    refute_valid(
+      :job_create_response,
+      %{
+        "job_id" => "job-123",
+        "status" => "processing"
+      }
+    )
+  end
+
+  test "job-create-response rejects envelope drift" do
+    refute_valid(
+      :job_create_response,
+      %{
+        "job_id" => "job-123",
+        "status" => "pending",
+        "debug" => true
+      }
+    )
+  end
+
+  # ------------------------------------------------------------
   # Public durable job response
   # ------------------------------------------------------------
 
   test "job-response accepts pending durable state" do
     assert_valid(
       :job_response,
-      %{
-        "job_id" => "job-123",
-        "user_id" => "jdoe",
-        "conversation_id" => nil,
-        "message" => "hello",
-        "status" => "pending",
-        "attempts" => 0,
-        "created_at" => "2026-09-10T04:00:00Z",
-        "claimed_at" => nil,
-        "lease_expires_at" => nil,
-        "completed_at" => nil,
-        "selected_agent" => nil,
-        "proposed_tool" => nil,
-        "result" => nil,
-        "error" => nil
-      }
+      valid_pending_job_response()
     )
   end
 
@@ -190,7 +213,7 @@ defmodule ItsmBackend.ContractsTest do
   end
 
   # ------------------------------------------------------------
-  # Phoenix -> AI execution
+  # Phoenix -> AI execution request
   # ------------------------------------------------------------
 
   test "ai-job-execute-request accepts the current internal payload" do
@@ -226,6 +249,58 @@ defmodule ItsmBackend.ContractsTest do
         "user_id" => "jdoe",
         "message" => "Check my account.",
         "retry" => true
+      }
+    )
+  end
+
+  # ------------------------------------------------------------
+  # AI execution acknowledgement
+  # ------------------------------------------------------------
+
+  test "ai-job-accepted accepts first execution acknowledgement" do
+    assert_valid(
+      :ai_job_accepted,
+      %{
+        "job_id" => "job-123",
+        "attempt" => 1,
+        "status" => "accepted",
+        "duplicate" => false
+      }
+    )
+  end
+
+  test "ai-job-accepted accepts duplicate acknowledgement" do
+    assert_valid(
+      :ai_job_accepted,
+      %{
+        "job_id" => "job-123",
+        "attempt" => 1,
+        "status" => "accepted",
+        "duplicate" => true
+      }
+    )
+  end
+
+  test "ai-job-accepted rejects invalid attempt" do
+    refute_valid(
+      :ai_job_accepted,
+      %{
+        "job_id" => "job-123",
+        "attempt" => 0,
+        "status" => "accepted",
+        "duplicate" => false
+      }
+    )
+  end
+
+  test "ai-job-accepted rejects unsupported status" do
+    refute_valid(
+      :ai_job_accepted,
+      %{
+        "job_id" => "job-123",
+        "attempt" => 1,
+        "status" => "completed",
+        "duplicate" => false
       }
     )
   end
@@ -351,6 +426,54 @@ defmodule ItsmBackend.ContractsTest do
         "selected_agent" => nil,
         "proposed_tool" => nil,
         "result" => %{}
+      }
+    )
+  end
+
+  # ------------------------------------------------------------
+  # Phoenix completion acknowledgement
+  # ------------------------------------------------------------
+
+  test "ai-job-completion-ack accepts applied completion" do
+    assert_valid(
+      :ai_job_completion_ack,
+      %{
+        "job_id" => "job-123",
+        "status" => "completed",
+        "acknowledgement" => "applied"
+      }
+    )
+  end
+
+  test "ai-job-completion-ack accepts duplicate terminal completion" do
+    assert_valid(
+      :ai_job_completion_ack,
+      %{
+        "job_id" => "job-123",
+        "status" => "failed",
+        "acknowledgement" => "duplicate"
+      }
+    )
+  end
+
+  test "ai-job-completion-ack rejects unsupported acknowledgement" do
+    refute_valid(
+      :ai_job_completion_ack,
+      %{
+        "job_id" => "job-123",
+        "status" => "completed",
+        "acknowledgement" => "ignored"
+      }
+    )
+  end
+
+  test "ai-job-completion-ack rejects non-completion state" do
+    refute_valid(
+      :ai_job_completion_ack,
+      %{
+        "job_id" => "job-123",
+        "status" => "processing",
+        "acknowledgement" => "applied"
       }
     )
   end

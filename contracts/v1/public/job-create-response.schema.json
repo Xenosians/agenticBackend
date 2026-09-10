@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:public:job-create-response",
+  "title": "Create Job Response",
+  "description": "Public acknowledgement returned after Phoenix durably creates a new AI job.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "status"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Phoenix-owned durable job identifier."
+    },
+    "status": {
+      "const": "pending",
+      "description": "A newly created durable job begins in the pending state."
+    }
+  },
+  "additionalProperties": false
+}

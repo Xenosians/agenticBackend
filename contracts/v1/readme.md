@@ -25,7 +25,10 @@ contracts/v1/
 │   └── tool-proposal.schema.json
 ├── public/
 │   ├── job-create-request.schema.json
+│   ├── job-create-response.schema.json
 │   └── job-response.schema.json
 └── internal/
     ├── ai-job-execute-request.schema.json
-    └── ai-job-completion.schema.json
+    ├── ai-job-accepted.schema.json
+    ├── ai-job-completion.schema.json
+    └── ai-job-completion-ack.schema.json
