@@ -19,7 +19,6 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   @spec claim_oldest(pos_integer()) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def claim_oldest(lease_seconds \\ 300)
 
   def claim_oldest(lease_seconds)
       when is_integer(lease_seconds) and

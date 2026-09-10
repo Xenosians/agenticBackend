@@ -98,14 +98,14 @@ defmodule ItsmBackend.Jobs.JobTest do
       })
 
     {:ok, claimed} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     assert {:error,
             {
               :job_not_pending,
               "processing"
             }} =
-             Job.claim(claimed)
+             Job.claim(claimed, 300)
   end
 
   test "processing job can require approval" do
@@ -116,7 +116,7 @@ defmodule ItsmBackend.Jobs.JobTest do
       })
 
     {:ok, processing} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     assert {:ok, waiting} =
              Job.transition(
@@ -139,7 +139,7 @@ defmodule ItsmBackend.Jobs.JobTest do
       })
 
     {:ok, processing} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     processing =
       Job.put_result(
@@ -176,7 +176,7 @@ defmodule ItsmBackend.Jobs.JobTest do
       })
 
     {:ok, processing} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     assert {:ok, recovered} =
              Job.transition(
@@ -205,7 +205,7 @@ defmodule ItsmBackend.Jobs.JobTest do
       })
 
     {:ok, processing} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     {:ok, completed} =
       Job.transition(

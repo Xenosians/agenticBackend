@@ -92,8 +92,6 @@ defmodule ItsmBackend.Jobs.Job do
           {:ok, t()}
           | {:error, term()}
 
-  def claim(job, lease_seconds \\ 300)
-
   def claim(
         %__MODULE__{status: "pending"} = job,
         lease_seconds

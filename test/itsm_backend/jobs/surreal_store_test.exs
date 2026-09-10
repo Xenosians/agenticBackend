@@ -44,7 +44,7 @@ defmodule ItsmBackend.Jobs.SurrealStoreTest do
              SurrealStore.create(job)
 
     assert {:ok, processing} =
-             Job.claim(job)
+             Job.claim(job, 300)
 
     assert {:ok, updated} =
              SurrealStore.update(processing)
@@ -90,7 +90,7 @@ defmodule ItsmBackend.Jobs.SurrealStoreTest do
       SurrealStore.create(job)
 
     {:ok, processing} =
-      Job.claim(job)
+      Job.claim(job, 300)
 
     processing =
       Job.put_result(
