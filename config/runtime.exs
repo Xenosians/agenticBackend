@@ -69,11 +69,6 @@ config :itsm_backend,
 
 # ------------------------------------------------------------
 # Durable queue worker
-#
-# RuntimeConfig performs type/range validation.
-#
-# Tests default to disabled so the worker does not consume
-# shared test jobs unless explicitly started by a test.
 # ------------------------------------------------------------
 
 queue_worker_default_enabled =
@@ -100,6 +95,48 @@ config :itsm_backend,
            "QUEUE_WORKER_LEASE_SECONDS",
            "300"
          )
+
+# ------------------------------------------------------------
+# Internal service authentication
+# ------------------------------------------------------------
+
+internal_job_token =
+  System.get_env("ITSM_INTERNAL_JOB_TOKEN")
+
+normalized_internal_job_token =
+  case internal_job_token do
+    nil ->
+      nil
+
+    token ->
+      String.trim(token)
+  end
+
+case {
+  config_env(),
+  normalized_internal_job_token
+} do
+  {:prod, nil} ->
+    raise """
+    environment variable ITSM_INTERNAL_JOB_TOKEN is missing.
+    """
+
+  {:prod, ""} ->
+    raise """
+    environment variable ITSM_INTERNAL_JOB_TOKEN must not be blank.
+    """
+
+  {_environment, nil} ->
+    :ok
+
+  {_environment, ""} ->
+    :ok
+
+  {_environment, token} ->
+    config :itsm_backend,
+           :internal_job_token,
+           token
+end
 
 # ------------------------------------------------------------
 # Production
