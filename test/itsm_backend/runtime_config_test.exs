@@ -4,6 +4,49 @@ defmodule ItsmBackend.RuntimeConfigTest do
 
   alias ItsmBackend.RuntimeConfig
 
+  defmodule ValidAIClient do
+    @behaviour ItsmBackend.AIClient
+
+    @impl true
+    def run(
+          _user_id,
+          _message
+        ) do
+      {:ok, %{}}
+    end
+
+    @impl true
+    def execute_job(
+          _job_id,
+          _attempt,
+          _user_id,
+          _message
+        ) do
+      {:ok, %{}}
+    end
+
+    @impl true
+    def approve(_approval_id) do
+      {:ok, %{}}
+    end
+
+    @impl true
+    def health do
+      {:ok, %{}}
+    end
+
+    @impl true
+    def ready do
+      {:ok, %{}}
+    end
+  end
+
+  defmodule IncompleteAIClient do
+    def ready do
+      {:ok, %{}}
+    end
+  end
+
   setup do
     original_queue_worker =
       Application.get_env(
@@ -17,6 +60,12 @@ defmodule ItsmBackend.RuntimeConfigTest do
         :ai_service
       )
 
+    original_ai_client =
+      Application.get_env(
+        :itsm_backend,
+        :ai_client
+      )
+
     on_exit(fn ->
       restore_config(
         :queue_worker,
@@ -27,27 +76,75 @@ defmodule ItsmBackend.RuntimeConfigTest do
         :ai_service,
         original_ai_service
       )
+
+      restore_config(
+        :ai_client,
+        original_ai_client
+      )
     end)
 
     :ok
   end
 
   # ------------------------------------------------------------
+  # AI client
+  # ------------------------------------------------------------
+
+  test "returns validated AI client implementation" do
+    Application.put_env(
+      :itsm_backend,
+      :ai_client,
+      ValidAIClient
+    )
+
+    assert RuntimeConfig.ai_client!() ==
+             ValidAIClient
+  end
+
+  test "rejects AI client implementation with missing callbacks" do
+    Application.put_env(
+      :itsm_backend,
+      :ai_client,
+      IncompleteAIClient
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/ItsmBackend.AIClient/,
+                 fn ->
+                   RuntimeConfig.ai_client!()
+                 end
+  end
+
+  test "rejects non-module AI client value" do
+    Application.put_env(
+      :itsm_backend,
+      :ai_client,
+      "invalid"
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/module/,
+                 fn ->
+                   RuntimeConfig.ai_client!()
+                 end
+  end
+
+  # ------------------------------------------------------------
   # Queue worker
   # ------------------------------------------------------------
 
-  test "returns validated queue worker configuration" do
+  test "normalizes OS-style queue worker configuration" do
     Application.put_env(
       :itsm_backend,
       :queue_worker,
-      enabled: true,
-      poll_interval_ms: 250,
-      lease_seconds: 30
+      enabled: "false",
+      poll_interval_ms: "250",
+      lease_seconds: "30"
     )
 
     assert RuntimeConfig.queue_worker!() ==
              %{
-               enabled: true,
+               enabled: false,
                poll_interval_ms: 250,
                lease_seconds: 30
              }
@@ -117,11 +214,27 @@ defmodule ItsmBackend.RuntimeConfigTest do
                  end
   end
 
+  test "rejects invalid queue worker boolean string" do
+    Application.put_env(
+      :itsm_backend,
+      :queue_worker,
+      enabled: "sometimes",
+      poll_interval_ms: "250",
+      lease_seconds: "30"
+    )
+
+    assert_raise RuntimeConfig.Error,
+                 ~r/enabled/,
+                 fn ->
+                   RuntimeConfig.queue_worker!()
+                 end
+  end
+
   test "rejects non-boolean enabled value" do
     Application.put_env(
       :itsm_backend,
       :queue_worker,
-      enabled: "yes",
+      enabled: 1,
       poll_interval_ms: 250,
       lease_seconds: 30
     )
@@ -137,15 +250,15 @@ defmodule ItsmBackend.RuntimeConfigTest do
   # AI service
   # ------------------------------------------------------------
 
-  test "returns validated AI service configuration" do
+  test "normalizes OS-style AI service configuration" do
     Application.put_env(
       :itsm_backend,
       :ai_service,
       base_url: "http://127.0.0.1:9000/",
-      run_timeout_ms: 120_000,
-      execute_timeout_ms: 8_000,
-      health_timeout_ms: 2_000,
-      ready_timeout_ms: 3_000
+      run_timeout_ms: "120000",
+      execute_timeout_ms: "8000",
+      health_timeout_ms: "2000",
+      ready_timeout_ms: "3000"
     )
 
     assert RuntimeConfig.ai_service!() ==

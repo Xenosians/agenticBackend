@@ -38,7 +38,7 @@ defmodule ItsmBackend.RuntimeConfig do
         }
 
   # ------------------------------------------------------------
-  # AI client implementation
+  # AI client
   # ------------------------------------------------------------
 
   @spec ai_client!() ::
@@ -100,7 +100,7 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
-  # AI service transport
+  # AI service
   # ------------------------------------------------------------
 
   @spec ai_service!() ::
@@ -224,16 +224,20 @@ defmodule ItsmBackend.RuntimeConfig do
       when is_boolean(value) ->
         value
 
+      {:ok, value}
+      when is_binary(value) ->
+        parse_boolean!(
+          value,
+          config_key,
+          field
+        )
+
       {:ok, value} ->
-        raise Error,
-          message:
-            "expected " <>
-              inspect_config_path(
-                config_key,
-                field
-              ) <>
-              " to be a boolean, got: " <>
-              inspect(value)
+        raise_invalid_boolean!(
+          config_key,
+          field,
+          value
+        )
 
       :error ->
         raise_missing_field!(
@@ -241,6 +245,45 @@ defmodule ItsmBackend.RuntimeConfig do
           field
         )
     end
+  end
+
+  defp parse_boolean!(
+         value,
+         config_key,
+         field
+       ) do
+    case value
+         |> String.trim()
+         |> String.downcase() do
+      "true" ->
+        true
+
+      "false" ->
+        false
+
+      _ ->
+        raise_invalid_boolean!(
+          config_key,
+          field,
+          value
+        )
+    end
+  end
+
+  defp raise_invalid_boolean!(
+         config_key,
+         field,
+         value
+       ) do
+    raise Error,
+      message:
+        "expected " <>
+          inspect_config_path(
+            config_key,
+            field
+          ) <>
+          " to be a boolean, got: " <>
+          inspect(value)
   end
 
   defp fetch_positive_integer!(
@@ -257,16 +300,20 @@ defmodule ItsmBackend.RuntimeConfig do
              value > 0 ->
         value
 
+      {:ok, value}
+      when is_binary(value) ->
+        parse_positive_integer!(
+          value,
+          config_key,
+          field
+        )
+
       {:ok, value} ->
-        raise Error,
-          message:
-            "expected " <>
-              inspect_config_path(
-                config_key,
-                field
-              ) <>
-              " to be a positive integer, got: " <>
-              inspect(value)
+        raise_invalid_positive_integer!(
+          config_key,
+          field,
+          value
+        )
 
       :error ->
         raise_missing_field!(
@@ -274,6 +321,44 @@ defmodule ItsmBackend.RuntimeConfig do
           field
         )
     end
+  end
+
+  defp parse_positive_integer!(
+         value,
+         config_key,
+         field
+       ) do
+    normalized =
+      String.trim(value)
+
+    case Integer.parse(normalized) do
+      {integer, ""}
+      when integer > 0 ->
+        integer
+
+      _ ->
+        raise_invalid_positive_integer!(
+          config_key,
+          field,
+          value
+        )
+    end
+  end
+
+  defp raise_invalid_positive_integer!(
+         config_key,
+         field,
+         value
+       ) do
+    raise Error,
+      message:
+        "expected " <>
+          inspect_config_path(
+            config_key,
+            field
+          ) <>
+          " to be a positive integer, got: " <>
+          inspect(value)
   end
 
   defp fetch_non_empty_string!(
