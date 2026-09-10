@@ -48,18 +48,12 @@ defmodule ItsmBackendWeb.Endpoint do
   # ------------------------------------------------------------
   # Browser frontend boundary
   #
-  # Development frontend:
-  #   http://localhost:8080
-  #   http://127.0.0.1:8080
-  #
-  # Keep this explicit rather than allowing "*".
+  # Origins are deployment configuration.
+  # Methods and headers remain deterministic API policy.
   # ------------------------------------------------------------
 
   plug CORSPlug,
-    origin: [
-      "http://localhost:8080",
-      "http://127.0.0.1:8080"
-    ],
+    origin: &ItsmBackend.RuntimeConfig.cors_origins!/0,
     methods: [
       "GET",
       "POST",

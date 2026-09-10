@@ -13,10 +13,18 @@ config :itsm_backend, ItsmBackendWeb.Endpoint,
   server: false
 
 # ------------------------------------------------------------
+# Test browser frontend
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :cors,
+       allowed_origins: [
+         "http://localhost:8080",
+         "http://127.0.0.1:8080"
+       ]
+
+# ------------------------------------------------------------
 # Test SurrealDB
-#
-# Current persistence tests exercise the local development
-# SurrealDB service. RuntimeConfig still owns validation.
 # ------------------------------------------------------------
 
 config :itsm_backend,

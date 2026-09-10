@@ -111,6 +111,47 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
+  # CORS
+  # ------------------------------------------------------------
+
+  @spec cors_origins!() :: [String.t()]
+  def cors_origins! do
+    config =
+      fetch_keyword_config!(:cors)
+
+    case Keyword.fetch(
+           config,
+           :allowed_origins
+         ) do
+      {:ok, origins}
+      when is_list(origins) and
+             origins != [] ->
+        origins
+        |> Enum.map(&validate_cors_origin!/1)
+        |> Enum.uniq()
+
+      {:ok, []} ->
+        raise Error,
+          message:
+            "expected :itsm_backend.cors.allowed_origins " <>
+              "to contain at least one origin"
+
+      {:ok, value} ->
+        raise Error,
+          message:
+            "expected :itsm_backend.cors.allowed_origins " <>
+              "to be a non-empty list, got: " <>
+              inspect(value)
+
+      :error ->
+        raise_missing_field!(
+          :cors,
+          :allowed_origins
+        )
+    end
+  end
+
+  # ------------------------------------------------------------
   # Queue worker
   # ------------------------------------------------------------
 
@@ -225,6 +266,57 @@ defmodule ItsmBackend.RuntimeConfig do
           :surrealdb
         )
     }
+  end
+
+  # ------------------------------------------------------------
+  # CORS validation
+  # ------------------------------------------------------------
+
+  defp validate_cors_origin!(origin)
+       when is_binary(origin) do
+    normalized =
+      String.trim(origin)
+
+    uri =
+      URI.parse(normalized)
+
+    valid_path? =
+      uri.path in [
+        nil,
+        "",
+        "/"
+      ]
+
+    if uri.scheme in [
+         "http",
+         "https"
+       ] and
+         is_binary(uri.host) and
+         uri.host != "" and
+         is_nil(uri.userinfo) and
+         is_nil(uri.query) and
+         is_nil(uri.fragment) and
+         valid_path? do
+      String.trim_trailing(
+        normalized,
+        "/"
+      )
+    else
+      raise Error,
+        message:
+          "expected :itsm_backend.cors.allowed_origins " <>
+            "entries to be HTTP(S) origins without paths, " <>
+            "queries, fragments, or credentials, got: " <>
+            inspect(origin)
+    end
+  end
+
+  defp validate_cors_origin!(origin) do
+    raise Error,
+      message:
+        "expected :itsm_backend.cors.allowed_origins " <>
+          "entries to be strings, got: " <>
+          inspect(origin)
   end
 
   # ------------------------------------------------------------

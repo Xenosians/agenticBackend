@@ -139,6 +139,51 @@ case {
 end
 
 # ------------------------------------------------------------
+# Browser frontend origins
+#
+# Development/test defaults live in their environment-specific
+# config files. Production must explicitly supply its origins.
+#
+# Multiple origins are comma separated.
+# ------------------------------------------------------------
+
+cors_allowed_origins =
+  System.get_env("CORS_ALLOWED_ORIGINS")
+
+case {
+  config_env(),
+  cors_allowed_origins
+} do
+  {:prod, nil} ->
+    raise """
+    environment variable CORS_ALLOWED_ORIGINS is missing.
+    """
+
+  {_environment, nil} ->
+    :ok
+
+  {_environment, value} ->
+    origins =
+      value
+      |> String.split(
+        ",",
+        trim: true
+      )
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    if origins == [] do
+      raise """
+      environment variable CORS_ALLOWED_ORIGINS must contain at least one origin.
+      """
+    end
+
+    config :itsm_backend,
+           :cors,
+           allowed_origins: origins
+end
+
+# ------------------------------------------------------------
 # Production
 # ------------------------------------------------------------
 
@@ -159,14 +204,6 @@ if config_env() == :prod do
   config :itsm_backend,
          :dns_cluster_query,
          System.get_env("DNS_CLUSTER_QUERY")
-
-  # ----------------------------------------------------------
-  # Production SurrealDB
-  #
-  # No deployment or credential defaults are permitted here.
-  # RuntimeConfig.surrealdb!/0 performs final semantic
-  # validation after runtime environment ingress.
-  # ----------------------------------------------------------
 
   required_surreal_env = fn variable ->
     case System.get_env(variable) do
