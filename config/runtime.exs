@@ -38,11 +38,63 @@ parse_positive_integer_env = fn variable, value ->
   end
 end
 
+parse_public_url = fn variable, value ->
+  normalized =
+    String.trim(value)
+
+  uri =
+    URI.parse(normalized)
+
+  valid_path? =
+    uri.path in [
+      nil,
+      "",
+      "/"
+    ]
+
+  if uri.scheme in [
+       "http",
+       "https"
+     ] and
+       is_binary(uri.host) and
+       uri.host != "" and
+       is_integer(uri.port) and
+       uri.port > 0 and
+       is_nil(uri.userinfo) and
+       is_nil(uri.query) and
+       is_nil(uri.fragment) and
+       valid_path? do
+    %{
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.port
+    }
+  else
+    raise """
+    environment variable #{variable} must be an HTTP(S) origin containing a valid host and port and no path, query, fragment, or credentials.
+    """
+  end
+end
+
+parse_bind_ip = fn variable, value ->
+  normalized =
+    value
+    |> String.trim()
+    |> String.to_charlist()
+
+  case :inet.parse_address(normalized) do
+    {:ok, address} ->
+      address
+
+    {:error, _reason} ->
+      raise """
+      environment variable #{variable} must be a valid IPv4 or IPv6 address.
+      """
+  end
+end
+
 # ------------------------------------------------------------
 # Phoenix server
-#
-# Development/test ports live in their environment-specific
-# configuration. Production has no embedded port fallback.
 # ------------------------------------------------------------
 
 if System.get_env("PHX_SERVER") do
@@ -51,49 +103,30 @@ if System.get_env("PHX_SERVER") do
          server: true
 end
 
-case {
-  config_env(),
-  System.get_env("PORT")
-} do
-  {:prod, _value} ->
-    value =
-      required_env.("PORT")
+# Non-production environments own explicit endpoint defaults in
+# dev.exs/test.exs and may override the listening port.
+if config_env() != :prod do
+  case System.get_env("PORT") do
+    nil ->
+      :ok
 
-    port =
-      parse_positive_integer_env.(
-        "PORT",
-        value
-      )
+    value ->
+      port =
+        parse_positive_integer_env.(
+          "PORT",
+          value
+        )
 
-    config :itsm_backend,
-           ItsmBackendWeb.Endpoint,
-           http: [
-             port: port
-           ]
-
-  {_environment, nil} ->
-    :ok
-
-  {_environment, value} ->
-    port =
-      parse_positive_integer_env.(
-        "PORT",
-        value
-      )
-
-    config :itsm_backend,
-           ItsmBackendWeb.Endpoint,
-           http: [
-             port: port
-           ]
+      config :itsm_backend,
+             ItsmBackendWeb.Endpoint,
+             http: [
+               port: port
+             ]
+  end
 end
 
 # ------------------------------------------------------------
 # AI service
-#
-# Development/test defaults live in their environment-specific
-# configuration. Production requires every transport value.
-# Non-production environments may override individual values.
 # ------------------------------------------------------------
 
 if config_env() == :prod do
@@ -126,10 +159,6 @@ end
 
 # ------------------------------------------------------------
 # Durable queue worker
-#
-# Development/test defaults live in their environment-specific
-# configuration. Production requires every worker setting.
-# Non-production environments may override individual values.
 # ------------------------------------------------------------
 
 if config_env() == :prod do
@@ -200,11 +229,6 @@ end
 
 # ------------------------------------------------------------
 # Browser frontend origins
-#
-# Development/test defaults live in their environment-specific
-# configuration. Production must explicitly supply its origins.
-#
-# Multiple origins are comma separated.
 # ------------------------------------------------------------
 
 cors_allowed_origins =
@@ -245,13 +269,6 @@ end
 
 # ------------------------------------------------------------
 # SurrealDB
-#
-# SurrealDB is an external durable service in every environment.
-# Its deployment identity and credentials therefore always enter
-# through runtime environment configuration.
-#
-# RuntimeConfig.surrealdb!/0 remains responsible for semantic
-# validation before application code consumes these values.
 # ------------------------------------------------------------
 
 config :itsm_backend,
@@ -263,15 +280,45 @@ config :itsm_backend,
        password: required_env.("SURREALDB_PASSWORD")
 
 # ------------------------------------------------------------
-# Production
+# Production endpoint
+#
+# PHX_PUBLIC_URL describes the externally visible origin.
+# PORT describes the actual HTTP listener.
+# PHX_BIND_IP describes the network interface to bind.
+#
+# These are intentionally independent deployment concerns.
 # ------------------------------------------------------------
 
 if config_env() == :prod do
   secret_key_base =
     required_env.("SECRET_KEY_BASE")
 
-  host =
-    required_env.("PHX_HOST")
+  public_url =
+    required_env.("PHX_PUBLIC_URL")
+    |> then(fn value ->
+      parse_public_url.(
+        "PHX_PUBLIC_URL",
+        value
+      )
+    end)
+
+  port =
+    required_env.("PORT")
+    |> then(fn value ->
+      parse_positive_integer_env.(
+        "PORT",
+        value
+      )
+    end)
+
+  bind_ip =
+    required_env.("PHX_BIND_IP")
+    |> then(fn value ->
+      parse_bind_ip.(
+        "PHX_BIND_IP",
+        value
+      )
+    end)
 
   config :itsm_backend,
          :dns_cluster_query,
@@ -280,21 +327,13 @@ if config_env() == :prod do
   config :itsm_backend,
          ItsmBackendWeb.Endpoint,
          url: [
-           host: host,
-           port: 443,
-           scheme: "https"
+           scheme: public_url.scheme,
+           host: public_url.host,
+           port: public_url.port
          ],
          http: [
-           ip: {
-             0,
-             0,
-             0,
-             0,
-             0,
-             0,
-             0,
-             0
-           }
+           ip: bind_ip,
+           port: port
          ],
          secret_key_base: secret_key_base
 end

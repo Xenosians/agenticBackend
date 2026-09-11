@@ -5,6 +5,11 @@ import Config
 # ------------------------------------------------------------
 
 config :itsm_backend, ItsmBackendWeb.Endpoint,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 4002
+  ],
   http: [
     ip: {127, 0, 0, 1},
     port: 4002
@@ -44,18 +49,6 @@ config :itsm_backend,
        enabled: false,
        poll_interval_ms: 1_000,
        lease_seconds: 300
-
-# ------------------------------------------------------------
-# Test SurrealDB
-# ------------------------------------------------------------
-
-config :itsm_backend,
-       :surrealdb,
-       url: "http://127.0.0.1:8001",
-       namespace: "itsm",
-       database: "itsm",
-       username: "itsm_app",
-       password: "itsm_dev_2026"
 
 # ------------------------------------------------------------
 # Mailer

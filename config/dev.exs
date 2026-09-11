@@ -5,6 +5,11 @@ import Config
 # ------------------------------------------------------------
 
 config :itsm_backend, ItsmBackendWeb.Endpoint,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 4000
+  ],
   http: [
     ip: {127, 0, 0, 1},
     port: 4000

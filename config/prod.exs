@@ -1,25 +1,34 @@
 import Config
 
-# Force using SSL in production. This also sets the "strict-security-transport" header,
-# known as HSTS. If you have a health check endpoint, you may want to exclude it below.
-# Note `:force_ssl` is required to be set at compile-time.
+# ------------------------------------------------------------
+# Production HTTPS policy
+#
+# Public URL and bind configuration are supplied at runtime.
+# TLS forwarding remains deterministic production policy.
+# ------------------------------------------------------------
+
 config :itsm_backend, ItsmBackendWeb.Endpoint,
   force_ssl: [
-    rewrite_on: [:x_forwarded_proto],
-    exclude: [
-      # paths: ["/health"],
-      hosts: ["localhost", "127.0.0.1"]
+    rewrite_on: [
+      :x_forwarded_proto
     ]
   ]
 
-# Configure Swoosh API Client
-config :swoosh, api_client: Swoosh.ApiClient.Req
+# ------------------------------------------------------------
+# Mailer
+# ------------------------------------------------------------
 
-# Disable Swoosh Local Memory Storage
-config :swoosh, local: false
+config :swoosh,
+  api_client: Swoosh.ApiClient.Req
 
-# Do not print debug messages in production
-config :logger, level: :info
+config :swoosh,
+  local: false
 
-# Runtime production configuration, including reading
-# of environment variables, is done on config/runtime.exs.
+# ------------------------------------------------------------
+# Logger
+# ------------------------------------------------------------
+
+config :logger,
+  level: :info
+
+# Runtime production configuration is loaded by runtime.exs.

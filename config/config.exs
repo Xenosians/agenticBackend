@@ -12,12 +12,12 @@ config :itsm_backend,
 
 # ------------------------------------------------------------
 # Phoenix endpoint
+#
+# Environment-specific endpoint identity belongs in dev/test
+# configuration or runtime production configuration.
 # ------------------------------------------------------------
 
 config :itsm_backend, ItsmBackendWeb.Endpoint,
-  url: [
-    host: "localhost"
-  ],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
     formats: [
