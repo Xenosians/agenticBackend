@@ -244,6 +244,25 @@ case {
 end
 
 # ------------------------------------------------------------
+# SurrealDB
+#
+# SurrealDB is an external durable service in every environment.
+# Its deployment identity and credentials therefore always enter
+# through runtime environment configuration.
+#
+# RuntimeConfig.surrealdb!/0 remains responsible for semantic
+# validation before application code consumes these values.
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :surrealdb,
+       url: required_env.("SURREALDB_URL"),
+       namespace: required_env.("SURREALDB_NAMESPACE"),
+       database: required_env.("SURREALDB_DATABASE"),
+       username: required_env.("SURREALDB_USERNAME"),
+       password: required_env.("SURREALDB_PASSWORD")
+
+# ------------------------------------------------------------
 # Production
 # ------------------------------------------------------------
 
@@ -257,22 +276,6 @@ if config_env() == :prod do
   config :itsm_backend,
          :dns_cluster_query,
          System.get_env("DNS_CLUSTER_QUERY")
-
-  # ----------------------------------------------------------
-  # Production SurrealDB
-  #
-  # No deployment or credential defaults are permitted here.
-  # RuntimeConfig.surrealdb!/0 performs final semantic
-  # validation after runtime environment ingress.
-  # ----------------------------------------------------------
-
-  config :itsm_backend,
-         :surrealdb,
-         url: required_env.("SURREALDB_URL"),
-         namespace: required_env.("SURREALDB_NAMESPACE"),
-         database: required_env.("SURREALDB_DATABASE"),
-         username: required_env.("SURREALDB_USERNAME"),
-         password: required_env.("SURREALDB_PASSWORD")
 
   config :itsm_backend,
          ItsmBackendWeb.Endpoint,

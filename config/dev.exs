@@ -49,18 +49,6 @@ config :itsm_backend,
        lease_seconds: 300
 
 # ------------------------------------------------------------
-# Development SurrealDB
-# ------------------------------------------------------------
-
-config :itsm_backend,
-       :surrealdb,
-       url: "http://127.0.0.1:8001",
-       namespace: "itsm",
-       database: "itsm",
-       username: "itsm_app",
-       password: "itsm_dev_2026"
-
-# ------------------------------------------------------------
 # Development runtime
 # ------------------------------------------------------------
 
