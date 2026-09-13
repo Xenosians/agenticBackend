@@ -53,7 +53,9 @@ defmodule ItsmBackend.Jobs do
   @spec update(Job.t()) ::
           {:ok, Job.t()}
           | {:error, term()}
-  def update(%Job{} = job) do
+  def update(
+        %Job{} = job
+      ) do
     SurrealStore.update(job)
   end
 
@@ -65,18 +67,152 @@ defmodule ItsmBackend.Jobs do
           {:ok, Job.t() | nil}
           | {:error, term()}
   def claim_oldest(lease_seconds) do
-    SurrealStore.claim_oldest(lease_seconds)
+    SurrealStore.claim_oldest(
+      lease_seconds
+    )
+  end
+
+  # ------------------------------------------------------------
+  # Processing lease renewal
+  #
+  # Heartbeats extend only the exact active attempt.
+  #
+  # SurrealDB performs the authoritative compare-and-set.
+  #
+  # If a concurrent heartbeat already renewed the same attempt,
+  # the follow-up read is treated as idempotent success.
+  # ------------------------------------------------------------
+
+  @spec renew_processing_lease(
+          String.t(),
+          pos_integer(),
+          pos_integer()
+        ) ::
+          {:ok, Job.t()}
+          | {:error, term()}
+  def renew_processing_lease(
+        job_id,
+        attempt,
+        lease_seconds
+      )
+      when is_binary(job_id) and
+             is_integer(attempt) and
+             attempt > 0 and
+             is_integer(lease_seconds) and
+             lease_seconds > 0 do
+    case SurrealStore.renew_processing_lease(
+           job_id,
+           attempt,
+           lease_seconds
+         ) do
+      {:ok, %Job{} = job} ->
+        {:ok, job}
+
+      {:ok, nil} ->
+        resolve_failed_lease_renewal(
+          job_id,
+          attempt
+        )
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def renew_processing_lease(
+        job_id,
+        attempt,
+        lease_seconds
+      ) do
+    {:error,
+     {
+       :invalid_lease_renewal,
+       job_id,
+       attempt,
+       lease_seconds
+     }}
+  end
+
+  defp resolve_failed_lease_renewal(
+         job_id,
+         incoming_attempt
+       ) do
+    case get(job_id) do
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      {:ok,
+       %Job{
+         attempts: current_attempt
+       }}
+      when current_attempt !=
+             incoming_attempt ->
+        {:error,
+         {
+           :stale_attempt,
+           current_attempt,
+           incoming_attempt
+         }}
+
+      {:ok,
+       %Job{
+         status: status
+       }}
+      when status !=
+             "processing" ->
+        {:error,
+         {
+           :job_not_processing,
+           status
+         }}
+
+      {:ok,
+       %Job{
+         lease_expires_at: nil
+       }} ->
+        {:error, :lease_missing}
+
+      {:ok,
+       %Job{
+         lease_expires_at:
+           %DateTime{} = lease_expires_at
+       } = job} ->
+        now =
+          DateTime.utc_now()
+
+        if DateTime.compare(
+             lease_expires_at,
+             now
+           ) in [:lt, :eq] do
+          {:error, :lease_expired}
+        else
+          # A concurrent heartbeat may already have renewed
+          # this exact attempt after our conditional UPDATE
+          # observed no row. Treat the currently healthy lease
+          # as idempotent success.
+          {:ok, job}
+        end
+    end
   end
 
   # ------------------------------------------------------------
   # Expired processing discovery
   # ------------------------------------------------------------
 
-  @spec find_oldest_expired_processing(DateTime.t()) ::
+  @spec find_oldest_expired_processing(
+          DateTime.t()
+        ) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def find_oldest_expired_processing(now \\ DateTime.utc_now()) do
-    SurrealStore.find_oldest_expired_processing(now)
+  def find_oldest_expired_processing(
+        now \\ DateTime.utc_now()
+      ) do
+    SurrealStore.find_oldest_expired_processing(
+      now
+    )
   end
 
   # ------------------------------------------------------------
@@ -122,7 +258,8 @@ defmodule ItsmBackend.Jobs do
       when is_binary(job_id) and
              is_integer(attempt) and
              attempt > 0 and
-             completion_status in @completion_statuses and
+             completion_status in
+               @completion_statuses and
              is_map(attrs) do
     with {:ok, job} <-
            get(job_id),
@@ -163,7 +300,8 @@ defmodule ItsmBackend.Jobs do
          status,
          _attrs
        )
-       when status in @completion_statuses do
+       when status in
+              @completion_statuses do
     {:ok, job, :duplicate}
   end
 
@@ -178,7 +316,8 @@ defmodule ItsmBackend.Jobs do
          _completion_status,
          _attrs
        )
-       when status in @terminal_statuses do
+       when status in
+              @terminal_statuses do
     {:ok, job, :duplicate}
   end
 
@@ -202,8 +341,14 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(normalize_result(result))
-      |> put_metadata(attrs)
+      |> Job.put_result(
+        normalize_result(
+          result
+        )
+      )
+      |> put_metadata(
+        attrs
+      )
 
     with {:ok, transitioned_job} <-
            Job.transition(
@@ -211,7 +356,9 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -236,8 +383,14 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(normalize_result(result))
-      |> put_metadata(attrs)
+      |> Job.put_result(
+        normalize_result(
+          result
+        )
+      )
+      |> put_metadata(
+        attrs
+      )
 
     with {:ok, transitioned_job} <-
            Job.transition(
@@ -245,7 +398,9 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -286,7 +441,9 @@ defmodule ItsmBackend.Jobs do
              "failed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
+           update(
+             transitioned_job
+           ) do
       {:ok, stored_job, :applied}
     end
   end
@@ -369,7 +526,8 @@ defmodule ItsmBackend.Jobs do
 
   defp normalize_result(result) do
     %{
-      "value" => result
+      "value" =>
+        result
     }
   end
 end

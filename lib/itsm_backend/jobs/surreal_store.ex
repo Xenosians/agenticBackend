@@ -3,8 +3,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   SurrealDB persistence adapter for AI jobs.
 
   Handles durable create, read, update, queue claiming,
-  expired-processing discovery, and compare-and-set recovery
-  operations.
+  processing-lease renewal, expired-processing discovery,
+  and compare-and-set recovery operations.
   """
 
   alias ItsmBackend.Jobs.Job
@@ -51,8 +51,14 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     """
 
     params = %{
-      "claimed_at" => DateTime.to_iso8601(claimed_at),
-      "lease_expires_at" => DateTime.to_iso8601(lease_expires_at)
+      "claimed_at" =>
+        encode_datetime(
+          claimed_at
+        ),
+      "lease_expires_at" =>
+        encode_datetime(
+          lease_expires_at
+        )
     }
 
     with {:ok, response} <-
@@ -96,15 +102,133 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   end
 
   # ------------------------------------------------------------
+  # Processing lease renewal
+  #
+  # A heartbeat may renew only:
+  #
+  # - the exact durable job
+  # - the exact current attempt
+  # - while the job is still processing
+  # - while its existing lease has not already expired
+  #
+  # The conditional UPDATE is the authority.
+  #
+  # No read-then-write resurrection is allowed.
+  # ------------------------------------------------------------
+
+  @spec renew_processing_lease(
+          String.t(),
+          pos_integer(),
+          pos_integer()
+        ) ::
+          {:ok, Job.t() | nil}
+          | {:error, term()}
+  def renew_processing_lease(
+        job_id,
+        attempt,
+        lease_seconds
+      )
+      when is_binary(job_id) and
+             is_integer(attempt) and
+             attempt > 0 and
+             is_integer(lease_seconds) and
+             lease_seconds > 0 do
+    now =
+      DateTime.utc_now()
+      |> DateTime.truncate(:microsecond)
+
+    lease_expires_at =
+      DateTime.add(
+        now,
+        lease_seconds,
+        :second
+      )
+
+    statement = """
+    UPDATE ONLY type::record($table, $id)
+    SET
+      lease_expires_at = $lease_expires_at
+    WHERE
+      status = "processing"
+      AND attempts = $attempt
+      AND lease_expires_at > $now
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => job_id,
+      "attempt" => attempt,
+      "now" =>
+        encode_datetime(
+          now
+        ),
+      "lease_expires_at" =>
+        encode_datetime(
+          lease_expires_at
+        )
+    }
+
+    with {:ok, response} <-
+           Surreal.query(
+             statement,
+             params
+           ),
+         {:ok, result} <-
+           extract_result(response) do
+      case result do
+        nil ->
+          {:ok, nil}
+
+        [] ->
+          {:ok, nil}
+
+        record
+        when is_map(record) ->
+          deserialize(record)
+
+        [record]
+        when is_map(record) ->
+          deserialize(record)
+
+        other ->
+          {:error,
+           {
+             :unexpected_lease_renewal_result,
+             other
+           }}
+      end
+    end
+  end
+
+  def renew_processing_lease(
+        job_id,
+        attempt,
+        lease_seconds
+      ) do
+    {:error,
+     {
+       :invalid_lease_renewal,
+       job_id,
+       attempt,
+       lease_seconds
+     }}
+  end
+
+  # ------------------------------------------------------------
   # Expired processing discovery
   # ------------------------------------------------------------
 
   @spec find_oldest_expired_processing(DateTime.t()) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def find_oldest_expired_processing(now \\ DateTime.utc_now())
+  def find_oldest_expired_processing(
+        now \\ DateTime.utc_now()
+      )
 
-  def find_oldest_expired_processing(%DateTime{} = now) do
+  def find_oldest_expired_processing(
+        %DateTime{} = now
+      ) do
     now =
       DateTime.truncate(
         now,
@@ -122,7 +246,10 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     """
 
     params = %{
-      "now" => encode_datetime(now)
+      "now" =>
+        encode_datetime(
+          now
+        )
     }
 
     with {:ok, response} <-
@@ -209,14 +336,28 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       """
 
       params = %{
-        "table" => @table,
-        "id" => job.id,
-        "attempts" => job.attempts,
-        "claimed_at" => encode_datetime(job.claimed_at),
-        "expected_lease_expires_at" => encode_datetime(job.lease_expires_at),
-        "error" => failed_job.error,
-        "completed_at" => encode_datetime(failed_job.completed_at),
-        "cleared_lease" => nil
+        "table" =>
+          @table,
+        "id" =>
+          job.id,
+        "attempts" =>
+          job.attempts,
+        "claimed_at" =>
+          encode_datetime(
+            job.claimed_at
+          ),
+        "expected_lease_expires_at" =>
+          encode_datetime(
+            job.lease_expires_at
+          ),
+        "error" =>
+          failed_job.error,
+        "completed_at" =>
+          encode_datetime(
+            failed_job.completed_at
+          ),
+        "cleared_lease" =>
+          nil
       }
 
       with {:ok, response} <-
@@ -270,7 +411,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   @spec create(Job.t()) ::
           {:ok, Job.t()}
           | {:error, term()}
-  def create(%Job{} = job) do
+  def create(
+        %Job{} = job
+      ) do
     statement = """
     CREATE ONLY type::record($table, $id)
     CONTENT $data
@@ -278,9 +421,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     """
 
     params = %{
-      "table" => @table,
-      "id" => job.id,
-      "data" => serialize(job)
+      "table" =>
+        @table,
+      "id" =>
+        job.id,
+      "data" =>
+        serialize(job)
     }
 
     with {:ok, response} <-
@@ -311,8 +457,10 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     """
 
     params = %{
-      "table" => @table,
-      "id" => job_id
+      "table" =>
+        @table,
+      "id" =>
+        job_id
     }
 
     with {:ok, response} <-
@@ -362,7 +510,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   @spec update(Job.t()) ::
           {:ok, Job.t()}
           | {:error, term()}
-  def update(%Job{} = job) do
+  def update(
+        %Job{} = job
+      ) do
     statement = """
     UPDATE ONLY type::record($table, $id)
     CONTENT $data
@@ -370,9 +520,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     """
 
     params = %{
-      "table" => @table,
-      "id" => job.id,
-      "data" => serialize(job)
+      "table" =>
+        @table,
+      "id" =>
+        job.id,
+      "data" =>
+        serialize(job)
     }
 
     with {:ok, response} <-
@@ -392,23 +545,48 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   # Serialization
   # ------------------------------------------------------------
 
-  defp serialize(%Job{} = job) do
+  defp serialize(
+         %Job{} = job
+       ) do
     %{
-      "job_id" => job.id,
-      "user_id" => job.user_id,
-      "conversation_id" => job.conversation_id,
-      "message" => job.message,
-      "status" => job.status,
-      "attempts" => job.attempts,
-      "created_at" => encode_datetime(job.created_at),
-      "claimed_at" => encode_datetime(job.claimed_at),
-      "lease_expires_at" => encode_datetime(job.lease_expires_at),
-      "completed_at" => encode_datetime(job.completed_at),
-      "selected_agent" => job.selected_agent,
-      "proposed_tool" => job.proposed_tool,
-      "result" => job.result,
-      "error" => job.error,
-      "notification_status" => job.notification_status
+      "job_id" =>
+        job.id,
+      "user_id" =>
+        job.user_id,
+      "conversation_id" =>
+        job.conversation_id,
+      "message" =>
+        job.message,
+      "status" =>
+        job.status,
+      "attempts" =>
+        job.attempts,
+      "created_at" =>
+        encode_datetime(
+          job.created_at
+        ),
+      "claimed_at" =>
+        encode_datetime(
+          job.claimed_at
+        ),
+      "lease_expires_at" =>
+        encode_datetime(
+          job.lease_expires_at
+        ),
+      "completed_at" =>
+        encode_datetime(
+          job.completed_at
+        ),
+      "selected_agent" =>
+        job.selected_agent,
+      "proposed_tool" =>
+        job.proposed_tool,
+      "result" =>
+        job.result,
+      "error" =>
+        job.error,
+      "notification_status" =>
+        job.notification_status
     }
   end
 
@@ -479,10 +657,14 @@ defmodule ItsmBackend.Jobs.SurrealStore do
              "attempts",
              0
            ),
-         created_at: created_at,
-         claimed_at: claimed_at,
-         lease_expires_at: lease_expires_at,
-         completed_at: completed_at,
+         created_at:
+           created_at,
+         claimed_at:
+           claimed_at,
+         lease_expires_at:
+           lease_expires_at,
+         completed_at:
+           completed_at,
          selected_agent:
            Map.get(
              record,
@@ -577,20 +759,28 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   defp encode_datetime(nil),
     do: nil
 
-  defp encode_datetime(%DateTime{} = datetime) do
-    DateTime.to_iso8601(datetime)
+  defp encode_datetime(
+         %DateTime{} = datetime
+       ) do
+    DateTime.to_iso8601(
+      datetime
+    )
   end
 
   defp decode_datetime(nil),
     do: {:ok, nil}
 
-  defp decode_datetime(%DateTime{} = datetime) do
+  defp decode_datetime(
+         %DateTime{} = datetime
+       ) do
     {:ok, datetime}
   end
 
   defp decode_datetime(value)
        when is_binary(value) do
-    case DateTime.from_iso8601(value) do
+    case DateTime.from_iso8601(
+           value
+         ) do
       {:ok, datetime, _offset} ->
         {:ok, datetime}
 

@@ -5,7 +5,8 @@ defmodule ItsmBackendWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api", ItsmBackendWeb do
+  scope "/api",
+        ItsmBackendWeb do
     pipe_through :api
 
     get "/health",
@@ -32,6 +33,14 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/jobs/:id/approve",
          JobController,
          :approve
+
+    # ----------------------------------------------------------
+    # Internal AI -> Phoenix durable-job protocol
+    # ----------------------------------------------------------
+
+    post "/internal/v1/jobs/:id/heartbeat",
+         JobHeartbeatController,
+         :heartbeat
 
     post "/internal/v1/jobs/:id/completion",
          JobCompletionController,

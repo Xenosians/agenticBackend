@@ -4,56 +4,36 @@ defmodule ItsmBackend.Surreal do
 
   Uses the RPC query method so SurrealQL variables can
   contain nested JSON values such as maps and lists.
+
+  Deployment-specific connection settings are resolved through
+  RuntimeConfig so the data-access layer does not read raw
+  application configuration directly.
   """
+
+  alias ItsmBackend.RuntimeConfig
 
   @spec query(String.t(), map()) ::
           {:ok, list()}
           | {:error, term()}
-  def query(statement, params \\ %{})
+  def query(
+        statement,
+        params \\ %{}
+      )
       when is_binary(statement) and
              is_map(params) do
     config =
-      Application.fetch_env!(
-        :itsm_backend,
-        :surrealdb
-      )
-
-    url =
-      Keyword.fetch!(
-        config,
-        :url
-      )
-
-    namespace =
-      Keyword.fetch!(
-        config,
-        :namespace
-      )
-
-    database =
-      Keyword.fetch!(
-        config,
-        :database
-      )
-
-    username =
-      Keyword.fetch!(
-        config,
-        :username
-      )
-
-    password =
-      Keyword.fetch!(
-        config,
-        :password
-      )
+      RuntimeConfig.surrealdb!()
 
     request_id =
-      System.unique_integer([:positive])
+      System.unique_integer([
+        :positive
+      ])
 
     payload = %{
-      "id" => request_id,
-      "method" => "query",
+      "id" =>
+        request_id,
+      "method" =>
+        "query",
       "params" => [
         statement,
         params
@@ -61,26 +41,44 @@ defmodule ItsmBackend.Surreal do
     }
 
     case Req.post(
-           "#{url}/rpc",
+           "#{config.url}/rpc",
            headers: [
-             {"surreal-ns", namespace},
-             {"surreal-db", database},
-             {"accept", "application/json"}
+             {
+               "surreal-ns",
+               config.namespace
+             },
+             {
+               "surreal-db",
+               config.database
+             },
+             {
+               "accept",
+               "application/json"
+             }
            ],
            auth: {
              :basic,
-             "#{username}:#{password}"
+             "#{config.username}:#{config.password}"
            },
-           json: payload
+           json:
+             payload
          ) do
-      {:ok, %{status: status, body: body}}
+      {:ok,
+       %{
+         status: status,
+         body: body
+       }}
       when status in 200..299 ->
         normalize_response(
           body,
           request_id
         )
 
-      {:ok, %{status: status, body: body}} ->
+      {:ok,
+       %{
+         status: status,
+         body: body
+       }} ->
         {:error,
          {
            :surreal_http_error,
@@ -97,21 +95,31 @@ defmodule ItsmBackend.Surreal do
     end
   end
 
+  # ------------------------------------------------------------
+  # RPC response
+  # ------------------------------------------------------------
+
   defp normalize_response(
          %{
-           "id" => response_id,
-           "result" => result
+           "id" =>
+             response_id,
+           "result" =>
+             result
          },
          request_id
        )
-       when response_id == request_id and
+       when response_id ==
+              request_id and
               is_list(result) do
-    normalize_query_results(result)
+    normalize_query_results(
+      result
+    )
   end
 
   defp normalize_response(
          %{
-           "error" => error
+           "error" =>
+             error
          },
          _request_id
        ) do
@@ -133,14 +141,21 @@ defmodule ItsmBackend.Surreal do
      }}
   end
 
-  defp normalize_query_results(results) do
+  # ------------------------------------------------------------
+  # SurrealQL results
+  # ------------------------------------------------------------
+
+  defp normalize_query_results(
+         results
+       ) do
     case Enum.find(
            results,
            fn item ->
              Map.get(
                item,
                "status"
-             ) != "OK"
+             ) !=
+               "OK"
            end
          ) do
       nil ->
