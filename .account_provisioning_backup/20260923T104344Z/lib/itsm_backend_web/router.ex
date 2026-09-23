@@ -38,11 +38,6 @@ defmodule ItsmBackendWeb.Router do
     # Internal AI -> Phoenix durable-job protocol
     # ----------------------------------------------------------
 
-    # Internal trusted account provisioning -> encrypted SurrealDB storage.
-    post "/internal/v1/provisioned-accounts",
-         ProvisionedAccountController,
-         :create
-
     post "/internal/v1/jobs/:id/heartbeat",
          JobHeartbeatController,
          :heartbeat

@@ -45,12 +45,6 @@ defmodule ItsmBackend.RuntimeConfig do
           password: String.t()
         }
 
-  @type credential_vault_config :: %{
-          key: binary(),
-          key_version: String.t(),
-          ttl_seconds: pos_integer()
-        }
-
   # ------------------------------------------------------------
   # AI client
   # ------------------------------------------------------------
@@ -313,58 +307,6 @@ defmodule ItsmBackend.RuntimeConfig do
           config,
           :password,
           :surrealdb
-        )
-    }
-  end
-
-  # ------------------------------------------------------------
-  # Credential vault
-  # ------------------------------------------------------------
-
-  @spec credential_vault!() :: credential_vault_config()
-  def credential_vault! do
-    config =
-      fetch_keyword_config!(:credential_vault)
-
-    key_b64 =
-      fetch_secret_string!(
-        config,
-        :key_b64,
-        :credential_vault
-      )
-
-    key =
-      case Base.decode64(key_b64) do
-        {:ok, decoded}
-        when byte_size(decoded) == 32 ->
-          decoded
-
-        {:ok, _decoded} ->
-          raise Error,
-            message:
-              "expected :itsm_backend.credential_vault.key_b64 " <>
-                "to decode to exactly 32 bytes"
-
-        :error ->
-          raise Error,
-            message:
-              "expected :itsm_backend.credential_vault.key_b64 " <>
-                "to contain valid base64"
-      end
-
-    %{
-      key: key,
-      key_version:
-        fetch_non_empty_string!(
-          config,
-          :key_version,
-          :credential_vault
-        ),
-      ttl_seconds:
-        fetch_positive_integer!(
-          config,
-          :ttl_seconds,
-          :credential_vault
         )
     }
   end

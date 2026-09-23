@@ -280,57 +280,6 @@ config :itsm_backend,
        password: required_env.("SURREALDB_PASSWORD")
 
 # ------------------------------------------------------------
-# Credential vault for provisioned account secrets
-#
-# The encryption key must remain outside SurrealDB. It is decoded
-# and validated by RuntimeConfig at use time.
-# ------------------------------------------------------------
-
-credential_key_b64 =
-  System.get_env("CREDENTIAL_ENCRYPTION_KEY_B64")
-
-credential_key_version =
-  System.get_env("CREDENTIAL_KEY_VERSION") || "v1"
-
-credential_ttl_seconds =
-  System.get_env("CREDENTIAL_TTL_SECONDS") || "86400"
-
-case {config_env(), credential_key_b64} do
-  {:prod, nil} ->
-    raise """
-    environment variable CREDENTIAL_ENCRYPTION_KEY_B64 is missing.
-    """
-
-  {:prod, value} when is_binary(value) ->
-    if String.trim(value) == "" do
-      raise """
-      environment variable CREDENTIAL_ENCRYPTION_KEY_B64 must not be blank.
-      """
-    end
-
-  _ ->
-    :ok
-end
-
-if is_binary(credential_key_b64) and String.trim(credential_key_b64) != "" do
-  if String.trim(credential_key_version) == "" do
-    raise """
-    environment variable CREDENTIAL_KEY_VERSION must not be blank.
-    """
-  end
-
-  config :itsm_backend,
-         :credential_vault,
-         key_b64: credential_key_b64,
-         key_version: String.trim(credential_key_version),
-         ttl_seconds:
-           parse_positive_integer_env.(
-             "CREDENTIAL_TTL_SECONDS",
-             credential_ttl_seconds
-           )
-end
-
-# ------------------------------------------------------------
 # Production endpoint
 #
 # PHX_PUBLIC_URL describes the externally visible origin.
