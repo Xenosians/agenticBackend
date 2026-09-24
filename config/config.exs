@@ -38,6 +38,10 @@ config :itsm_backend,
        ItsmBackend.Mailer,
        adapter: Swoosh.Adapters.Local
 
+config :swoosh,
+       :api_client,
+       Swoosh.ApiClient.Req
+
 # ------------------------------------------------------------
 # Logger
 # ------------------------------------------------------------
