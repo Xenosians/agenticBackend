@@ -31,10 +31,19 @@ defmodule ItsmBackendWeb.JobController do
       |> put_status(:accepted)
       |> json(response)
     else
-      {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "chat_not_found"})
-      {:error, :forbidden} -> conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
-      {:error, {:invalid_job_create_request, _, _}} -> conn |> put_status(:unprocessable_entity) |> json(%{error: "invalid_request"})
-      {:error, reason} -> conn |> put_status(:internal_server_error) |> json(%{error: "job_creation_failed", reason: inspect(reason)})
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "chat_not_found"})
+
+      {:error, :forbidden} ->
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+
+      {:error, {:invalid_job_create_request, _, _}} ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: "invalid_request"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "job_creation_failed", reason: inspect(reason)})
     end
   end
 
@@ -51,9 +60,16 @@ defmodule ItsmBackendWeb.JobController do
          {:ok, response} <- PublicContract.build_job_response(job) do
       json(conn, response)
     else
-      {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
-      {:error, :forbidden} -> conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
-      {:error, reason} -> conn |> put_status(:internal_server_error) |> json(%{error: "job_lookup_failed", reason: inspect(reason)})
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
+
+      {:error, :forbidden} ->
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "job_lookup_failed", reason: inspect(reason)})
     end
   end
 
@@ -73,19 +89,41 @@ defmodule ItsmBackendWeb.JobController do
          {:ok, response} <- PublicContract.build_job_response(completed_job) do
       json(conn, response)
     else
-      {:error, :not_found} -> conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
-      {:error, :forbidden} -> conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
-      {:error, {:job_not_waiting_approval, status}} -> conn |> put_status(:conflict) |> json(%{error: "job_not_waiting_approval", status: status})
-      {:error, :approval_id_missing} -> conn |> put_status(:conflict) |> json(%{error: "approval_id_missing"})
-      {:error, {:approval_service_failed, reason}} -> conn |> put_status(:bad_gateway) |> json(%{error: "approval_service_failed", reason: inspect(reason)})
-      {:error, reason} -> conn |> put_status(:internal_server_error) |> json(%{error: "job_approval_failed", reason: inspect(reason)})
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
+
+      {:error, :forbidden} ->
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+
+      {:error, {:job_not_waiting_approval, status}} ->
+        conn
+        |> put_status(:conflict)
+        |> json(%{error: "job_not_waiting_approval", status: status})
+
+      {:error, :approval_id_missing} ->
+        conn |> put_status(:conflict) |> json(%{error: "approval_id_missing"})
+
+      {:error, {:approval_service_failed, reason}} ->
+        conn
+        |> put_status(:bad_gateway)
+        |> json(%{error: "approval_service_failed", reason: inspect(reason)})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "job_approval_failed", reason: inspect(reason)})
     end
   end
 
-  defp approval_id(%Job{status: "waiting_approval", proposed_tool: proposed_tool}) when is_map(proposed_tool) do
+  defp approval_id(%Job{status: "waiting_approval", proposed_tool: proposed_tool})
+       when is_map(proposed_tool) do
     value = Map.get(proposed_tool, "approval_id") || Map.get(proposed_tool, :approval_id)
-    if is_binary(value) and String.trim(value) != "", do: {:ok, String.trim(value)}, else: {:error, :approval_id_missing}
+
+    if is_binary(value) and String.trim(value) != "",
+      do: {:ok, String.trim(value)},
+      else: {:error, :approval_id_missing}
   end
+
   defp approval_id(%Job{status: "waiting_approval"}), do: {:error, :approval_id_missing}
   defp approval_id(%Job{status: status}), do: {:error, {:job_not_waiting_approval, status}}
 
@@ -97,7 +135,8 @@ defmodule ItsmBackendWeb.JobController do
     end
   end
 
-  defp complete_approved_job(%Job{status: "waiting_approval"} = job, approval_result) when is_map(approval_result) do
+  defp complete_approved_job(%Job{status: "waiting_approval"} = job, approval_result)
+       when is_map(approval_result) do
     previous_result = if is_map(job.result), do: job.result, else: %{}
 
     completed_result =
@@ -105,12 +144,15 @@ defmodule ItsmBackendWeb.JobController do
       |> Map.put("approval_execution", approval_result)
       |> Map.put("answer", approval_answer(approval_result))
 
-    with {:ok, transitioned} <- job |> Job.put_result(completed_result) |> Job.transition("completed"),
+    with {:ok, transitioned} <-
+           job |> Job.put_result(completed_result) |> Job.transition("completed"),
          {:ok, stored} <- Jobs.update(transitioned) do
       {:ok, stored}
     end
   end
-  defp complete_approved_job(%Job{status: status}, _), do: {:error, {:job_not_waiting_approval, status}}
+
+  defp complete_approved_job(%Job{status: status}, _),
+    do: {:error, {:job_not_waiting_approval, status}}
 
   defp approval_answer(result) do
     Map.get(result, "answer") ||

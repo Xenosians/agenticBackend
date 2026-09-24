@@ -25,33 +25,20 @@ defmodule ItsmBackendWeb.HealthController do
       RuntimeConfig.ai_client!()
 
     ai_health =
-      resolve_ai_health(
-        ai_client
-      )
+      resolve_ai_health(ai_client)
 
     ai_readiness =
-      resolve_ai_readiness(
-        ai_client
-      )
+      resolve_ai_readiness(ai_client)
 
     json(
       conn,
       %{
-        status:
-          "ok",
-
-        service:
-          "itsm_backend",
-
+        status: "ok",
+        service: "itsm_backend",
         ai_service: %{
-          reachable:
-            ai_health.reachable,
-
-          healthy:
-            ai_health.healthy,
-
-          ready:
-            ai_readiness.ready
+          reachable: ai_health.reachable,
+          healthy: ai_health.healthy,
+          ready: ai_readiness.ready
         }
       }
     )
@@ -61,9 +48,7 @@ defmodule ItsmBackendWeb.HealthController do
   # AI health
   # ------------------------------------------------------------
 
-  defp resolve_ai_health(
-         ai_client
-       ) do
+  defp resolve_ai_health(ai_client) do
     case ai_client.health() do
       {:ok, _body} ->
         %{
@@ -89,9 +74,7 @@ defmodule ItsmBackendWeb.HealthController do
   # AI readiness
   # ------------------------------------------------------------
 
-  defp resolve_ai_readiness(
-         ai_client
-       ) do
+  defp resolve_ai_readiness(ai_client) do
     case ai_client.ready() do
       {:ok, _body} ->
         %{

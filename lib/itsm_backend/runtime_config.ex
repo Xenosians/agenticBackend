@@ -388,14 +388,17 @@ defmodule ItsmBackend.RuntimeConfig do
           |> Enum.uniq()
 
         value ->
-          raise Error, message: "expected :itsm_backend.auth.admin_emails to be a list, got: #{inspect(value)}"
+          raise Error,
+            message:
+              "expected :itsm_backend.auth.admin_emails to be a list, got: #{inspect(value)}"
       end
 
     cookie_same_site =
       fetch_non_empty_string!(config, :cookie_same_site, :auth)
 
     if cookie_same_site not in ["Lax", "Strict", "None"] do
-      raise Error, message: "expected :itsm_backend.auth.cookie_same_site to be Lax, Strict, or None"
+      raise Error,
+        message: "expected :itsm_backend.auth.cookie_same_site to be Lax, Strict, or None"
     end
 
     cookie_secure = fetch_boolean!(config, :cookie_secure, :auth)
@@ -408,7 +411,8 @@ defmodule ItsmBackend.RuntimeConfig do
       registration_enabled: fetch_boolean!(config, :registration_enabled, :auth),
       session_ttl_seconds: fetch_positive_integer!(config, :session_ttl_seconds, :auth),
       verification_ttl_seconds: fetch_positive_integer!(config, :verification_ttl_seconds, :auth),
-      password_reset_ttl_seconds: fetch_positive_integer!(config, :password_reset_ttl_seconds, :auth),
+      password_reset_ttl_seconds:
+        fetch_positive_integer!(config, :password_reset_ttl_seconds, :auth),
       cookie_name: fetch_non_empty_string!(config, :cookie_name, :auth),
       cookie_secure: cookie_secure,
       cookie_same_site: cookie_same_site,

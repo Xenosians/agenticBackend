@@ -52,9 +52,7 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
        when is_integer(attempt) and
               attempt > 0 do
     lease_seconds =
-      RuntimeConfig
-      .queue_worker!()
-      .lease_seconds
+      RuntimeConfig.queue_worker!().lease_seconds
 
     case Jobs.renew_processing_lease(
            job_id,
@@ -65,22 +63,17 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
         conn
         |> put_status(:ok)
         |> json(%{
-          job_id:
-            job.id,
-          attempt:
-            job.attempts,
-          status:
-            job.status,
-          lease_expires_at:
-            job.lease_expires_at
+          job_id: job.id,
+          attempt: job.attempts,
+          status: job.status,
+          lease_expires_at: job.lease_expires_at
         })
 
       {:error, :not_found} ->
         conn
         |> put_status(:not_found)
         |> json(%{
-          error:
-            "job_not_found"
+          error: "job_not_found"
         })
 
       {:error,
@@ -92,12 +85,9 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
         conn
         |> put_status(:conflict)
         |> json(%{
-          error:
-            "stale_attempt",
-          current_attempt:
-            current_attempt,
-          received_attempt:
-            received_attempt
+          error: "stale_attempt",
+          current_attempt: current_attempt,
+          received_attempt: received_attempt
         })
 
       {:error,
@@ -108,38 +98,30 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
         conn
         |> put_status(:conflict)
         |> json(%{
-          error:
-            "job_not_processing",
-          status:
-            status
+          error: "job_not_processing",
+          status: status
         })
 
       {:error, :lease_expired} ->
         conn
         |> put_status(:conflict)
         |> json(%{
-          error:
-            "lease_expired"
+          error: "lease_expired"
         })
 
       {:error, :lease_missing} ->
         conn
         |> put_status(:conflict)
         |> json(%{
-          error:
-            "lease_missing"
+          error: "lease_missing"
         })
 
       {:error, reason} ->
         conn
-        |> put_status(
-          :internal_server_error
-        )
+        |> put_status(:internal_server_error)
         |> json(%{
-          error:
-            "heartbeat_failed",
-          reason:
-            inspect(reason)
+          error: "heartbeat_failed",
+          reason: inspect(reason)
         })
     end
   end
@@ -158,12 +140,9 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
 
   defp invalid_heartbeat(conn) do
     conn
-    |> put_status(
-      :unprocessable_entity
-    )
+    |> put_status(:unprocessable_entity)
     |> json(%{
-      error:
-        "invalid_heartbeat"
+      error: "invalid_heartbeat"
     })
   end
 
@@ -173,12 +152,9 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
 
   defp unauthorized(conn) do
     conn
-    |> put_status(
-      :unauthorized
-    )
+    |> put_status(:unauthorized)
     |> json(%{
-      error:
-        "unauthorized"
+      error: "unauthorized"
     })
   end
 
@@ -192,9 +168,7 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
 
     provided =
       conn
-      |> get_req_header(
-        "x-internal-token"
-      )
+      |> get_req_header("x-internal-token")
       |> List.first()
 
     secure_match?(

@@ -35,16 +35,12 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
        %{conn: conn} do
     {:ok, job} =
       Job.new(%{
-        user_id:
-          "heartbeat-test-user",
-        message:
-          "Simulate a long-running AI request."
+        user_id: "heartbeat-test-user",
+        message: "Simulate a long-running AI request."
       })
 
     {:ok, created_job} =
-      SurrealStore.create(
-        job
-      )
+      SurrealStore.create(job)
 
     # Short initial lease.
     #
@@ -57,17 +53,13 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
       )
 
     {:ok, stored_processing} =
-      SurrealStore.update(
-        processing_job
-      )
+      SurrealStore.update(processing_job)
 
     old_expiry =
-      stored_processing
-      .lease_expires_at
+      stored_processing.lease_expires_at
 
     attempt =
-      stored_processing
-      .attempts
+      stored_processing.attempts
 
     conn =
       post_heartbeat(
@@ -103,9 +95,7 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
              ]
            )
 
-    assert {:ok,
-            renewed_expiry,
-            _offset} =
+    assert {:ok, renewed_expiry, _offset} =
              DateTime.from_iso8601(
                response[
                  "lease_expires_at"
@@ -120,9 +110,7 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
 
     # Heartbeat must never create a new execution attempt.
     assert {:ok, renewed_job} =
-             Jobs.get(
-               stored_processing.id
-             )
+             Jobs.get(stored_processing.id)
 
     assert renewed_job.attempts ==
              attempt
@@ -148,12 +136,9 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
              stale_conn,
              409
            ) == %{
-             "error" =>
-               "stale_attempt",
-             "current_attempt" =>
-               attempt,
-             "received_attempt" =>
-               attempt + 1
+             "error" => "stale_attempt",
+             "current_attempt" => attempt,
+             "received_attempt" => attempt + 1
            }
 
     # Keep the persistent SurrealDB test environment clean.
@@ -173,8 +158,7 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
          attempt
        ) do
     payload = %{
-      "attempt" =>
-        attempt
+      "attempt" => attempt
     }
 
     conn
@@ -190,9 +174,7 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
       "/api/internal/v1/jobs/" <>
         job_id <>
         "/heartbeat",
-      Jason.encode!(
-        payload
-      )
+      Jason.encode!(payload)
     )
   end
 

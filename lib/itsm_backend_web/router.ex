@@ -64,10 +64,10 @@ defmodule ItsmBackendWeb.Router do
          JobCompletionController,
          :complete
   end
+
   if Application.compile_env(:itsm_backend, :dev_routes, false) do
     scope "/dev" do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
-
 end

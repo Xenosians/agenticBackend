@@ -69,7 +69,9 @@ defmodule ItsmBackend.Chats do
     }
 
     case assistant_content(job) do
-      nil -> [user_turn]
+      nil ->
+        [user_turn]
+
       content ->
         [
           user_turn,
@@ -94,10 +96,12 @@ defmodule ItsmBackend.Chats do
   defp assistant_content(_), do: nil
 
   defp normalize_title(nil), do: "New chat"
+
   defp normalize_title(value) when is_binary(value) do
     value = String.trim(value)
     if value == "", do: "New chat", else: String.slice(value, 0, 160)
   end
+
   defp normalize_title(_), do: "New chat"
 
   defp random_id, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)

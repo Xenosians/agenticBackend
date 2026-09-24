@@ -38,11 +38,8 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
 
     assert {:ok, created_job} =
              Jobs.create(%{
-               user_id:
-                 "structured-result-user",
-
-               message:
-                 "Check workspace services."
+               user_id: "structured-result-user",
+               message: "Check workspace services."
              })
 
     # ----------------------------------------------------------
@@ -56,9 +53,7 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
              )
 
     assert {:ok, processing_job} =
-             Jobs.update(
-               processing_job
-             )
+             Jobs.update(processing_job)
 
     # ----------------------------------------------------------
     # Representative AI HubResult-shaped structured result
@@ -68,152 +63,76 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
     # ----------------------------------------------------------
 
     structured_result = %{
-      "status" =>
-        "success",
-
-      "user_request" =>
-        "Check workspace services.",
-
+      "status" => "success",
+      "user_request" => "Check workspace services.",
       "routes" => [
         "developer-specialist"
       ],
-
       "results" => [
         %{
-          "task_id" =>
-            "task-structured-001",
-
-          "agent_name" =>
-            "developer-specialist",
-
-          "status" =>
-            "success",
-
-          "answer" =>
-            "Workspace service status:\n- samba-ad: state=running",
-
-          "proposed_tool" =>
-            "workspace_service_status",
-
-          "proposed_arguments" =>
-            %{},
-
-          "error" =>
-            nil,
-
-          "approval_id" =>
-            nil,
-
+          "task_id" => "task-structured-001",
+          "agent_name" => "developer-specialist",
+          "status" => "success",
+          "answer" => "Workspace service status:\n- samba-ad: state=running",
+          "proposed_tool" => "workspace_service_status",
+          "proposed_arguments" => %{},
+          "error" => nil,
+          "approval_id" => nil,
           "tool_result" => %{
-            "ok" =>
-              true,
-
-            "status" =>
-              "success",
-
-            "provider" =>
-              "docker_compose",
-
+            "ok" => true,
+            "status" => "success",
+            "provider" => "docker_compose",
             "services" => [
               %{
-                "service" =>
-                  "samba-ad",
-
-                "container" =>
-                  "itsm-samba-ad",
-
-                "state" =>
-                  "running",
-
-                "status" =>
-                  "Up 2 minutes",
-
-                "health" =>
-                  nil
+                "service" => "samba-ad",
+                "container" => "itsm-samba-ad",
+                "state" => "running",
+                "status" => "Up 2 minutes",
+                "health" => nil
               }
             ],
-
-            "service_count" =>
-              1,
-
-            "error" =>
-              nil
+            "service_count" => 1,
+            "error" => nil
           },
-
           "presentation" => %{
-            "schema" =>
-              "result-card.v1",
-
-            "kind" =>
-              "service_status",
-
-            "title" =>
-              "Workspace services",
-
-            "status" =>
-              "success",
-
+            "schema" => "result-card.v1",
+            "kind" => "service_status",
+            "title" => "Workspace services",
+            "status" => "success",
             "fields" => [
               %{
-                "label" =>
-                  "Provider",
-
-                "value" =>
-                  "docker_compose"
+                "label" => "Provider",
+                "value" => "docker_compose"
               },
-
               %{
-                "label" =>
-                  "Services",
-
-                "value" =>
-                  "1"
+                "label" => "Services",
+                "value" => "1"
               }
             ],
-
             "sections" => [
               %{
-                "kind" =>
-                  "list",
-
-                "title" =>
-                  "Services",
-
+                "kind" => "list",
+                "title" => "Services",
                 "content" => [
-                  (
-                    "samba-ad: "
-                    <> "state=running, "
-                    <> "status=Up 2 minutes"
-                  )
+                  "samba-ad: " <>
+                    "state=running, " <>
+                    "status=Up 2 minutes"
                 ]
               }
             ]
           }
         }
       ],
-
-      "answer" =>
-        "The samba-ad workspace service is running.",
-
-      "error" =>
-        nil
+      "answer" => "The samba-ad workspace service is running.",
+      "error" => nil
     }
 
     completion_payload = %{
-      "attempt" =>
-        processing_job.attempts,
-
-      "status" =>
-        "completed",
-
-      "selected_agent" =>
-        "developer-specialist",
-
-      "proposed_tool" =>
-        nil,
-
-      "result" =>
-        structured_result
+      "attempt" => processing_job.attempts,
+      "status" => "completed",
+      "selected_agent" => "developer-specialist",
+      "proposed_tool" => nil,
+      "result" => structured_result
     }
 
     # ----------------------------------------------------------
@@ -232,23 +151,16 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
       )
       |> post(
         ~p"/api/internal/v1/jobs/#{processing_job.id}/completion",
-        Jason.encode!(
-          completion_payload
-        )
+        Jason.encode!(completion_payload)
       )
 
     assert json_response(
              completion_conn,
              200
            ) == %{
-             "job_id" =>
-               processing_job.id,
-
-             "status" =>
-               "completed",
-
-             "acknowledgement" =>
-               "applied"
+             "job_id" => processing_job.id,
+             "status" => "completed",
+             "acknowledgement" => "applied"
            }
 
     # ----------------------------------------------------------
@@ -257,9 +169,7 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
 
     public_conn =
       build_conn()
-      |> get(
-        ~p"/api/v1/jobs/#{processing_job.id}"
-      )
+      |> get(~p"/api/v1/jobs/#{processing_job.id}")
 
     response =
       json_response(
@@ -329,18 +239,12 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
              "sections"
            ] == [
              %{
-               "kind" =>
-                 "list",
-
-               "title" =>
-                 "Services",
-
+               "kind" => "list",
+               "title" => "Services",
                "content" => [
-                 (
-                   "samba-ad: "
-                   <> "state=running, "
-                   <> "status=Up 2 minutes"
-                 )
+                 "samba-ad: " <>
+                   "state=running, " <>
+                   "status=Up 2 minutes"
                ]
              }
            ]

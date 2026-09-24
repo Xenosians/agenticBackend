@@ -30,10 +30,8 @@ defmodule ItsmBackend.Surreal do
       ])
 
     payload = %{
-      "id" =>
-        request_id,
-      "method" =>
-        "query",
+      "id" => request_id,
+      "method" => "query",
       "params" => [
         statement,
         params
@@ -60,8 +58,7 @@ defmodule ItsmBackend.Surreal do
              :basic,
              "#{config.username}:#{config.password}"
            },
-           json:
-             payload
+           json: payload
          ) do
       {:ok,
        %{
@@ -101,25 +98,20 @@ defmodule ItsmBackend.Surreal do
 
   defp normalize_response(
          %{
-           "id" =>
-             response_id,
-           "result" =>
-             result
+           "id" => response_id,
+           "result" => result
          },
          request_id
        )
        when response_id ==
               request_id and
               is_list(result) do
-    normalize_query_results(
-      result
-    )
+    normalize_query_results(result)
   end
 
   defp normalize_response(
          %{
-           "error" =>
-             error
+           "error" => error
          },
          _request_id
        ) do
@@ -145,9 +137,7 @@ defmodule ItsmBackend.Surreal do
   # SurrealQL results
   # ------------------------------------------------------------
 
-  defp normalize_query_results(
-         results
-       ) do
+  defp normalize_query_results(results) do
     case Enum.find(
            results,
            fn item ->

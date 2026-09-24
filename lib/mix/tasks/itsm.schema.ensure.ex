@@ -26,9 +26,7 @@ defmodule Mix.Tasks.Itsm.Schema.Ensure do
         ensure_schema!()
 
       {:error, reason} ->
-        Mix.raise(
-          "failed to start Req for SurrealDB schema bootstrap: #{inspect(reason)}"
-        )
+        Mix.raise("failed to start Req for SurrealDB schema bootstrap: #{inspect(reason)}")
     end
   end
 
@@ -38,9 +36,7 @@ defmodule Mix.Tasks.Itsm.Schema.Ensure do
         Mix.shell().info("ITSM SURREAL SCHEMA: OK")
 
       {:error, reason} ->
-        Mix.raise(
-          "failed to ensure SurrealDB schema: #{inspect(reason)}"
-        )
+        Mix.raise("failed to ensure SurrealDB schema: #{inspect(reason)}")
     end
   end
 end

@@ -65,9 +65,7 @@ defmodule ItsmBackend.Jobs do
   @spec update(Job.t()) ::
           {:ok, Job.t()}
           | {:error, term()}
-  def update(
-        %Job{} = job
-      ) do
+  def update(%Job{} = job) do
     SurrealStore.update(job)
   end
 
@@ -79,9 +77,7 @@ defmodule ItsmBackend.Jobs do
           {:ok, Job.t() | nil}
           | {:error, term()}
   def claim_oldest(lease_seconds) do
-    SurrealStore.claim_oldest(
-      lease_seconds
-    )
+    SurrealStore.claim_oldest(lease_seconds)
   end
 
   # ------------------------------------------------------------
@@ -189,8 +185,7 @@ defmodule ItsmBackend.Jobs do
 
       {:ok,
        %Job{
-         lease_expires_at:
-           %DateTime{} = lease_expires_at
+         lease_expires_at: %DateTime{} = lease_expires_at
        } = job} ->
         now =
           DateTime.utc_now()
@@ -214,17 +209,11 @@ defmodule ItsmBackend.Jobs do
   # Expired processing discovery
   # ------------------------------------------------------------
 
-  @spec find_oldest_expired_processing(
-          DateTime.t()
-        ) ::
+  @spec find_oldest_expired_processing(DateTime.t()) ::
           {:ok, Job.t() | nil}
           | {:error, term()}
-  def find_oldest_expired_processing(
-        now \\ DateTime.utc_now()
-      ) do
-    SurrealStore.find_oldest_expired_processing(
-      now
-    )
+  def find_oldest_expired_processing(now \\ DateTime.utc_now()) do
+    SurrealStore.find_oldest_expired_processing(now)
   end
 
   # ------------------------------------------------------------
@@ -270,8 +259,7 @@ defmodule ItsmBackend.Jobs do
       when is_binary(job_id) and
              is_integer(attempt) and
              attempt > 0 and
-             completion_status in
-               @completion_statuses and
+             completion_status in @completion_statuses and
              is_map(attrs) do
     with {:ok, job} <-
            get(job_id),
@@ -312,8 +300,7 @@ defmodule ItsmBackend.Jobs do
          status,
          _attrs
        )
-       when status in
-              @completion_statuses do
+       when status in @completion_statuses do
     {:ok, job, :duplicate}
   end
 
@@ -328,8 +315,7 @@ defmodule ItsmBackend.Jobs do
          _completion_status,
          _attrs
        )
-       when status in
-              @terminal_statuses do
+       when status in @terminal_statuses do
     {:ok, job, :duplicate}
   end
 
@@ -353,14 +339,8 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(
-        normalize_result(
-          result
-        )
-      )
-      |> put_metadata(
-        attrs
-      )
+      |> Job.put_result(normalize_result(result))
+      |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
            Job.transition(
@@ -368,9 +348,7 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end
@@ -395,14 +373,8 @@ defmodule ItsmBackend.Jobs do
 
     job =
       job
-      |> Job.put_result(
-        normalize_result(
-          result
-        )
-      )
-      |> put_metadata(
-        attrs
-      )
+      |> Job.put_result(normalize_result(result))
+      |> put_metadata(attrs)
 
     with {:ok, transitioned_job} <-
            Job.transition(
@@ -410,9 +382,7 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end
@@ -453,9 +423,7 @@ defmodule ItsmBackend.Jobs do
              "failed"
            ),
          {:ok, stored_job} <-
-           update(
-             transitioned_job
-           ) do
+           update(transitioned_job) do
       {:ok, stored_job, :applied}
     end
   end
@@ -538,8 +506,7 @@ defmodule ItsmBackend.Jobs do
 
   defp normalize_result(result) do
     %{
-      "value" =>
-        result
+      "value" => result
     }
   end
 end

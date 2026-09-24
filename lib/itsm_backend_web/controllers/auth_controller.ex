@@ -15,11 +15,20 @@ defmodule ItsmBackendWeb.AuthController do
         |> put_status(:created)
         |> json(%{user: user, verification_required: true, mail_delivery: delivery})
 
-      {:error, :email_taken} -> error(conn, :conflict, "email_taken")
-      {:error, :registration_disabled} -> error(conn, :forbidden, "registration_disabled")
-      {:error, :invalid_email} -> error(conn, :unprocessable_entity, "invalid_email")
-      {:error, :invalid_password} -> error(conn, :unprocessable_entity, "invalid_password")
-      {:error, _} -> error(conn, :unprocessable_entity, "invalid_registration")
+      {:error, :email_taken} ->
+        error(conn, :conflict, "email_taken")
+
+      {:error, :registration_disabled} ->
+        error(conn, :forbidden, "registration_disabled")
+
+      {:error, :invalid_email} ->
+        error(conn, :unprocessable_entity, "invalid_email")
+
+      {:error, :invalid_password} ->
+        error(conn, :unprocessable_entity, "invalid_password")
+
+      {:error, _} ->
+        error(conn, :unprocessable_entity, "invalid_registration")
     end
   end
 
@@ -37,8 +46,12 @@ defmodule ItsmBackendWeb.AuthController do
       {:ok, user, token} ->
         _ = AccountsMailer.deliver_verification(user, token)
         accepted(conn)
-      {:ok, :not_applicable} -> accepted(conn)
-      {:error, _} -> accepted(conn)
+
+      {:ok, :not_applicable} ->
+        accepted(conn)
+
+      {:error, _} ->
+        accepted(conn)
     end
   end
 
@@ -61,9 +74,14 @@ defmodule ItsmBackendWeb.AuthController do
           csrf_token: auth.csrf_token
         })
 
-      {:error, :email_not_verified} -> error(conn, :forbidden, "email_not_verified")
-      {:error, :account_disabled} -> error(conn, :forbidden, "account_disabled")
-      {:error, _} -> error(conn, :unauthorized, "invalid_credentials")
+      {:error, :email_not_verified} ->
+        error(conn, :forbidden, "email_not_verified")
+
+      {:error, :account_disabled} ->
+        error(conn, :forbidden, "account_disabled")
+
+      {:error, _} ->
+        error(conn, :unauthorized, "invalid_credentials")
     end
   end
 
@@ -78,7 +96,9 @@ defmodule ItsmBackendWeb.AuthController do
           expires_at: ctx.session["expires_at"],
           csrf_token: ctx.session["csrf_token"]
         })
-      {:error, conn} -> conn
+
+      {:error, conn} ->
+        conn
     end
   end
 
@@ -91,7 +111,9 @@ defmodule ItsmBackendWeb.AuthController do
         conn
         |> delete_resp_cookie(config.cookie_name, path: "/")
         |> json(%{status: "logged_out"})
-      {:error, conn} -> conn
+
+      {:error, conn} ->
+        conn
     end
   end
 
@@ -100,8 +122,12 @@ defmodule ItsmBackendWeb.AuthController do
       {:ok, user, token} ->
         _ = AccountsMailer.deliver_password_reset(user, token)
         accepted(conn)
-      {:ok, :not_applicable} -> accepted(conn)
-      {:error, _} -> accepted(conn)
+
+      {:ok, :not_applicable} ->
+        accepted(conn)
+
+      {:error, _} ->
+        accepted(conn)
     end
   end
 
