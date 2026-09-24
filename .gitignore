@@ -37,4 +37,5 @@ itsm_backend-*.tar
 # Local SurrealDB runtime data
 # ------------------------------------------------------------
 
-/surreal_data/
+/surreal_data//client_secret_*.apps.googleusercontent.com.json
+/secret

@@ -74,4 +74,4 @@ config :phoenix,
 
 config :swoosh,
        :api_client,
-       false
+       Swoosh.ApiClient.Req
