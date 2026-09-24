@@ -106,6 +106,9 @@ defmodule ItsmBackend.Jobs.PublicContract do
       "conversation_id" =>
         job.conversation_id,
 
+      "chat_id" =>
+        job.conversation_id,
+
       "message" =>
         job.message,
 

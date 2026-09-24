@@ -47,6 +47,18 @@ defmodule ItsmBackend.Jobs do
   end
 
   # ------------------------------------------------------------
+  # Conversation history
+  # ------------------------------------------------------------
+
+  @spec list_by_conversation(String.t(), String.t(), pos_integer()) ::
+          {:ok, [Job.t()]} | {:error, term()}
+  def list_by_conversation(user_id, conversation_id, limit \\ 100)
+      when is_binary(user_id) and is_binary(conversation_id) and
+             is_integer(limit) and limit > 0 do
+    SurrealStore.list_by_conversation(user_id, conversation_id, min(limit, 500))
+  end
+
+  # ------------------------------------------------------------
   # Update
   # ------------------------------------------------------------
 

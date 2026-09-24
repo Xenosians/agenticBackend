@@ -370,6 +370,58 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
+  # Browser application authentication
+  # ------------------------------------------------------------
+
+  @spec auth!() :: map()
+  def auth! do
+    config = fetch_keyword_config!(:auth)
+
+    admin_emails =
+      case Keyword.get(config, :admin_emails, []) do
+        values when is_list(values) ->
+          values
+          |> Enum.map(fn value ->
+            if is_binary(value), do: value |> String.trim() |> String.downcase(), else: ""
+          end)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.uniq()
+
+        value ->
+          raise Error, message: "expected :itsm_backend.auth.admin_emails to be a list, got: #{inspect(value)}"
+      end
+
+    cookie_same_site =
+      fetch_non_empty_string!(config, :cookie_same_site, :auth)
+
+    if cookie_same_site not in ["Lax", "Strict", "None"] do
+      raise Error, message: "expected :itsm_backend.auth.cookie_same_site to be Lax, Strict, or None"
+    end
+
+    cookie_secure = fetch_boolean!(config, :cookie_secure, :auth)
+
+    if cookie_same_site == "None" and not cookie_secure do
+      raise Error, message: "SameSite=None requires a secure authentication cookie"
+    end
+
+    %{
+      registration_enabled: fetch_boolean!(config, :registration_enabled, :auth),
+      session_ttl_seconds: fetch_positive_integer!(config, :session_ttl_seconds, :auth),
+      verification_ttl_seconds: fetch_positive_integer!(config, :verification_ttl_seconds, :auth),
+      password_reset_ttl_seconds: fetch_positive_integer!(config, :password_reset_ttl_seconds, :auth),
+      cookie_name: fetch_non_empty_string!(config, :cookie_name, :auth),
+      cookie_secure: cookie_secure,
+      cookie_same_site: cookie_same_site,
+      frontend_base_url: fetch_http_url!(config, :frontend_base_url, :auth),
+      mail_from_email: fetch_non_empty_string!(config, :mail_from_email, :auth),
+      mail_from_name: fetch_non_empty_string!(config, :mail_from_name, :auth),
+      admin_emails: admin_emails,
+      ai_context_enabled: fetch_boolean!(config, :ai_context_enabled, :auth),
+      ai_context_max_turns: fetch_positive_integer!(config, :ai_context_max_turns, :auth)
+    }
+  end
+
+  # ------------------------------------------------------------
   # CORS validation
   # ------------------------------------------------------------
 

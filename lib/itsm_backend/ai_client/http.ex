@@ -51,24 +51,26 @@ defmodule ItsmBackend.AIClient.HTTP do
   # ------------------------------------------------------------
 
   @impl true
+  def execute_job(job_id, attempt, user_id, message) do
+    execute_job(job_id, attempt, user_id, message, [])
+  end
+
   def execute_job(
         job_id,
         attempt,
         user_id,
-        message
+        message,
+        context
       ) do
     with {:ok, payload} <-
            JobContract.build_execute_request(
              job_id,
              attempt,
              user_id,
-             message
+             message,
+             context
            ) do
-      execute_validated_job(
-        job_id,
-        attempt,
-        payload
-      )
+      execute_validated_job(job_id, attempt, payload)
     end
   end
 

@@ -15,23 +15,20 @@ defmodule ItsmBackend.AIClient.JobContract do
   # Execute request
   # ------------------------------------------------------------
 
-  @spec build_execute_request(
-          term(),
-          term(),
-          term(),
-          term()
-        ) ::
-          {:ok, map()}
-          | {:error,
-             {
-               :invalid_ai_job_execute_request,
-               term()
-             }}
+  @spec build_execute_request(term(), term(), term(), term()) ::
+          {:ok, map()} | {:error, {:invalid_ai_job_execute_request, term()}}
+  def build_execute_request(job_id, attempt, user_id, message) do
+    build_execute_request(job_id, attempt, user_id, message, [])
+  end
+
+  @spec build_execute_request(term(), term(), term(), term(), term()) ::
+          {:ok, map()} | {:error, {:invalid_ai_job_execute_request, term()}}
   def build_execute_request(
         job_id,
         attempt,
         user_id,
-        message
+        message,
+        context
       ) do
     payload = %{
       "job_id" => job_id,
@@ -40,19 +37,15 @@ defmodule ItsmBackend.AIClient.JobContract do
       "message" => message
     }
 
-    case Contracts.validate(
-           :ai_job_execute_request,
-           payload
-         ) do
-      :ok ->
-        {:ok, payload}
+    payload =
+      case context do
+        [] -> payload
+        value -> Map.put(payload, "context", value)
+      end
 
-      {:error, reason} ->
-        {:error,
-         {
-           :invalid_ai_job_execute_request,
-           reason
-         }}
+    case Contracts.validate(:ai_job_execute_request, payload) do
+      :ok -> {:ok, payload}
+      {:error, reason} -> {:error, {:invalid_ai_job_execute_request, reason}}
     end
   end
 

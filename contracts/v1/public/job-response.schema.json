@@ -8,6 +8,7 @@
     "job_id",
     "user_id",
     "conversation_id",
+    "chat_id",
     "message",
     "status",
     "attempts",
@@ -30,6 +31,13 @@
       "minLength": 1
     },
     "conversation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "chat_id": {
       "type": [
         "string",
         "null"

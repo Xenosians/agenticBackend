@@ -504,6 +504,41 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   end
 
   # ------------------------------------------------------------
+  # Conversation history
+  # ------------------------------------------------------------
+
+  def list_by_conversation(user_id, conversation_id, limit) do
+    statement = """
+    SELECT * FROM job
+    WHERE user_id = $user_id AND conversation_id = $conversation_id
+    ORDER BY created_at ASC
+    LIMIT $limit;
+    """
+
+    with {:ok, response} <-
+           Surreal.query(statement, %{
+             "user_id" => user_id,
+             "conversation_id" => conversation_id,
+             "limit" => limit
+           }),
+         {:ok, result} <- extract_result(response) do
+      rows = if is_list(result), do: result, else: []
+
+      rows
+      |> Enum.reduce_while({:ok, []}, fn row, {:ok, acc} ->
+        case deserialize(row) do
+          {:ok, job} -> {:cont, {:ok, [job | acc]}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+      |> case do
+        {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
+        error -> error
+      end
+    end
+  end
+
+  # ------------------------------------------------------------
   # Update
   # ------------------------------------------------------------
 

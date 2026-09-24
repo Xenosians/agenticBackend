@@ -57,5 +57,15 @@ config :phoenix,
        :json_library,
        Jason
 
+config :phoenix,
+       :filter_parameters,
+       [
+         "password",
+         "new_password",
+         "temporary_password",
+         "token",
+         "session_token"
+       ]
+
 # Environment-specific configuration must remain last.
 import_config "#{config_env()}.exs"

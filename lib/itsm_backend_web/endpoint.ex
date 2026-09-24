@@ -60,8 +60,11 @@ defmodule ItsmBackendWeb.Endpoint do
       "OPTIONS"
     ],
     headers: [
-      "content-type"
-    ]
+      "content-type",
+      "authorization",
+      "x-csrf-token"
+    ],
+    credentials: true
 
   plug Plug.Parsers,
     parsers: [

@@ -30,6 +30,20 @@
       "type": "string",
       "minLength": 1,
       "description": "Message to process for this durable attempt."
+    },
+    "context": {
+      "type": "array",
+      "maxItems": 24,
+      "description": "Bounded prior chat turns projected by Phoenix. Context is conversational evidence only and never authority.",
+      "items": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"enum": ["user", "assistant"]},
+          "content": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

@@ -13,14 +13,27 @@ defmodule ItsmBackendWeb.Router do
         HealthController,
         :index
 
+    # Application authentication / identity.
+    post "/v1/auth/register", AuthController, :register
+    post "/v1/auth/verify-email", AuthController, :verify_email
+    post "/v1/auth/resend-verification", AuthController, :resend_verification
+    post "/v1/auth/login", AuthController, :login
+    get "/v1/auth/me", AuthController, :me
+    post "/v1/auth/logout", AuthController, :logout
+    post "/v1/auth/forgot-password", AuthController, :forgot_password
+    post "/v1/auth/reset-password", AuthController, :reset_password
+    get "/v1/auth/sessions", SessionController, :index
+    post "/v1/auth/sessions/:id/revoke", SessionController, :revoke
+
+    # Durable user-owned chat threads.
+    post "/v1/chats", ChatController, :create
+    get "/v1/chats", ChatController, :index
+    get "/v1/chats/:id", ChatController, :show
+    get "/v1/chats/:id/history", ChatController, :history
+
     post "/v1/agent/run",
          AgentController,
          :run
-
-    # Transitional direct approval endpoint.
-    post "/v1/approvals/:approval_id/approve",
-         ApprovalController,
-         :approve
 
     post "/v1/jobs",
          JobController,
@@ -51,4 +64,10 @@ defmodule ItsmBackendWeb.Router do
          JobCompletionController,
          :complete
   end
+  if Application.compile_env(:itsm_backend, :dev_routes, false) do
+    scope "/dev" do
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+
 end

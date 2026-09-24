@@ -331,6 +331,148 @@ if is_binary(credential_key_b64) and String.trim(credential_key_b64) != "" do
 end
 
 # ------------------------------------------------------------
+# Browser application identity / session configuration
+# ------------------------------------------------------------
+
+auth_registration_enabled = System.get_env("AUTH_REGISTRATION_ENABLED") || "true"
+auth_session_ttl = System.get_env("AUTH_SESSION_TTL_SECONDS") || "604800"
+auth_verification_ttl = System.get_env("AUTH_VERIFICATION_TTL_SECONDS") || "86400"
+auth_password_reset_ttl = System.get_env("AUTH_PASSWORD_RESET_TTL_SECONDS") || "3600"
+auth_cookie_name = System.get_env("AUTH_COOKIE_NAME") || "itsm_session"
+auth_cookie_same_site = System.get_env("AUTH_COOKIE_SAME_SITE") || "Lax"
+auth_cookie_secure =
+  System.get_env("AUTH_COOKIE_SECURE") || if(config_env() == :prod, do: "true", else: "false")
+
+frontend_base_url =
+  System.get_env("APP_FRONTEND_URL") || if(config_env() == :prod, do: nil, else: "http://127.0.0.1:8080")
+
+mail_from_email =
+  System.get_env("MAIL_FROM_EMAIL") ||
+    System.get_env("SMTP_USERNAME") ||
+    if(config_env() == :prod, do: nil, else: "no-reply@itsm.local")
+
+mail_from_name = System.get_env("MAIL_FROM_NAME") || "Agentic ITSM"
+admin_emails =
+  (System.get_env("AUTH_ADMIN_EMAILS") || "")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
+
+if config_env() == :prod and is_nil(frontend_base_url), do: raise("environment variable APP_FRONTEND_URL is missing.")
+if config_env() == :prod and is_nil(mail_from_email), do: raise("environment variable MAIL_FROM_EMAIL is missing.")
+
+config :itsm_backend,
+       :auth,
+       registration_enabled: auth_registration_enabled,
+       session_ttl_seconds: auth_session_ttl,
+       verification_ttl_seconds: auth_verification_ttl,
+       password_reset_ttl_seconds: auth_password_reset_ttl,
+       cookie_name: auth_cookie_name,
+       cookie_secure: auth_cookie_secure,
+       cookie_same_site: auth_cookie_same_site,
+       frontend_base_url: frontend_base_url,
+       mail_from_email: mail_from_email,
+       mail_from_name: mail_from_name,
+       admin_emails: admin_emails,
+       ai_context_enabled: System.get_env("AI_JOB_CONTEXT_ENABLED") || "false",
+       ai_context_max_turns: System.get_env("AI_JOB_CONTEXT_MAX_TURNS") || "12"
+
+# ------------------------------------------------------------
+# Outbound mail transport
+#
+# MAILER_MODE=local
+#   Development-only in-process Swoosh mailbox. Inspect through
+#   the Phoenix-mounted /dev/mailbox route in the SAME BEAM node.
+#
+# MAILER_MODE=smtp
+#   Real SMTP delivery in any non-test environment. Gmail is a
+#   supported SMTP provider via smtp.gmail.com + App Password.
+# ------------------------------------------------------------
+
+if config_env() != :test do
+  mailer_mode =
+    (System.get_env("MAILER_MODE") || if(config_env() == :prod, do: "smtp", else: "local"))
+    |> String.trim()
+    |> String.downcase()
+
+  unless mailer_mode in ["local", "smtp"] do
+    raise "MAILER_MODE must be either local or smtp"
+  end
+
+  config :itsm_backend,
+         :outbound_mail,
+         mode: mailer_mode
+
+  case mailer_mode do
+    "local" ->
+      if config_env() == :prod do
+        raise "MAILER_MODE=local is not allowed in production"
+      end
+
+      config :itsm_backend,
+             ItsmBackend.Mailer,
+             adapter: Swoosh.Adapters.Local
+
+    "smtp" ->
+      smtp_host = required_env.("SMTP_HOST")
+      smtp_port = parse_positive_integer_env.("SMTP_PORT", required_env.("SMTP_PORT"))
+      smtp_username = required_env.("SMTP_USERNAME")
+      smtp_password = required_env.("SMTP_PASSWORD")
+
+      smtp_security =
+        (System.get_env("SMTP_SECURITY") || "starttls")
+        |> String.trim()
+        |> String.downcase()
+
+      unless smtp_security in ["starttls", "ssl"] do
+        raise "SMTP_SECURITY must be starttls or ssl"
+      end
+
+      tls_verify_options = [
+        versions: [:"tlsv1.2", :"tlsv1.3"],
+        verify: :verify_peer,
+        cacerts: :public_key.cacerts_get(),
+        server_name_indication: String.to_charlist(smtp_host),
+        depth: 99,
+        customize_hostname_check: [
+          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+        ]
+      ]
+
+      base_mailer_config = [
+        adapter: Swoosh.Adapters.SMTP,
+        relay: smtp_host,
+        port: smtp_port,
+        username: smtp_username,
+        password: smtp_password,
+        auth: :always,
+        retries: 2,
+        no_mx_lookups: false
+      ]
+
+      mailer_config =
+        case smtp_security do
+          "starttls" ->
+            Keyword.merge(base_mailer_config,
+              ssl: false,
+              tls: :always,
+              tls_options: tls_verify_options
+            )
+
+          "ssl" ->
+            Keyword.merge(base_mailer_config,
+              ssl: true,
+              sockopts: tls_verify_options
+            )
+        end
+
+      config :itsm_backend,
+             ItsmBackend.Mailer,
+             mailer_config
+  end
+end
+
+# ------------------------------------------------------------
 # Production endpoint
 #
 # PHX_PUBLIC_URL describes the externally visible origin.

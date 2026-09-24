@@ -26,6 +26,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   require Logger
 
+  alias ItsmBackend.Chats
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.RuntimeConfig
@@ -195,12 +196,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         "job_id=#{job.id}"
     )
 
-    case ai_client.execute_job(
-           job.id,
-           job.attempts,
-           job.user_id,
-           job.message
-         ) do
+    case dispatch_to_ai(ai_client, job) do
       {:ok, ack} ->
         Logger.info(
           "AI job accepted " <>
@@ -212,6 +208,18 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           state
           | inflight_job_id: job.id
         }
+
+      {:error, {:context_projection_failed, reason}} ->
+        Logger.error(
+          "Failed to project bounded chat context " <>
+            "job_id=#{job.id} " <>
+            "reason=#{inspect(reason)}"
+        )
+
+        # No AI dispatch occurred, so this pre-dispatch failure is safe
+        # to requeue.
+        safely_requeue(job)
+        state
 
       {:error,
        {
@@ -242,6 +250,43 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           state
           | inflight_job_id: job.id
         }
+    end
+  end
+
+  # ------------------------------------------------------------
+  # Bounded chat context projection
+  # ------------------------------------------------------------
+
+  defp dispatch_to_ai(ai_client, %Job{} = job) do
+    auth = RuntimeConfig.auth!()
+
+    if auth.ai_context_enabled and is_binary(job.conversation_id) do
+      case Chats.ai_context(
+             job.user_id,
+             job.conversation_id,
+             job.id,
+             auth.ai_context_max_turns
+           ) do
+        {:ok, context} ->
+          if function_exported?(ai_client, :execute_job, 5) do
+            apply(ai_client, :execute_job, [
+              job.id,
+              job.attempts,
+              job.user_id,
+              job.message,
+              context
+            ])
+          else
+            # Compatibility for isolated test clients. The production
+            # HTTP client implements /5 when context is enabled.
+            ai_client.execute_job(job.id, job.attempts, job.user_id, job.message)
+          end
+
+        {:error, reason} ->
+          {:error, {:context_projection_failed, reason}}
+      end
+    else
+      ai_client.execute_job(job.id, job.attempts, job.user_id, job.message)
     end
   end
 
