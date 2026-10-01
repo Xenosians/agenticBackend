@@ -2,7 +2,7 @@ defmodule ItsmBackend.Mail do
   @moduledoc """
   Application-wide outbound mail boundary.
 
-  Auth mail and future notification mail share the same Swoosh
+  Auth mail and notification mail share the same Swoosh
   message composition layer.
 
   Delivery is selected at runtime:
@@ -44,6 +44,42 @@ defmodule ItsmBackend.Mail do
       })
       |> subject(subject)
       |> text_body(text_body)
+
+    deliver(
+      email,
+      outbound_mode()
+    )
+  end
+
+  @spec deliver_multipart(
+          String.t() | {String.t(), String.t()},
+          String.t(),
+          String.t(),
+          String.t()
+        ) ::
+          {:ok, term()} | {:error, term()}
+  def deliver_multipart(
+        to,
+        subject,
+        text_body_value,
+        html_body_value
+      )
+      when is_binary(subject) and
+             is_binary(text_body_value) and
+             is_binary(html_body_value) do
+    config =
+      RuntimeConfig.auth!()
+
+    email =
+      new()
+      |> to(to)
+      |> from({
+        config.mail_from_name,
+        config.mail_from_email
+      })
+      |> subject(subject)
+      |> text_body(text_body_value)
+      |> html_body(html_body_value)
 
     deliver(
       email,
