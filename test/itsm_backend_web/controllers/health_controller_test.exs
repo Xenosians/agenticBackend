@@ -44,13 +44,10 @@ defmodule ItsmBackendWeb.HealthControllerTest do
     end
 
     @impl true
-    def approve(
-          _approval_id
-        ) do
+    def approve(_approval_id) do
       {:error, :not_used}
     end
   end
-
 
   defmodule OfflineAIClient do
     @behaviour ItsmBackend.AIClient
@@ -84,9 +81,7 @@ defmodule ItsmBackendWeb.HealthControllerTest do
     end
 
     @impl true
-    def approve(
-          _approval_id
-        ) do
+    def approve(_approval_id) do
       {:error, :not_used}
     end
   end
@@ -134,21 +129,12 @@ defmodule ItsmBackendWeb.HealthControllerTest do
              conn,
              200
            ) == %{
-             "status" =>
-               "ok",
-
-             "service" =>
-               "itsm_backend",
-
+             "status" => "ok",
+             "service" => "itsm_backend",
              "ai_service" => %{
-               "reachable" =>
-                 true,
-
-               "healthy" =>
-                 true,
-
-               "ready" =>
-                 true
+               "reachable" => true,
+               "healthy" => true,
+               "ready" => true
              }
            }
   end
@@ -177,21 +163,12 @@ defmodule ItsmBackendWeb.HealthControllerTest do
              conn,
              200
            ) == %{
-             "status" =>
-               "ok",
-
-             "service" =>
-               "itsm_backend",
-
+             "status" => "ok",
+             "service" => "itsm_backend",
              "ai_service" => %{
-               "reachable" =>
-                 false,
-
-               "healthy" =>
-                 false,
-
-               "ready" =>
-                 false
+               "reachable" => false,
+               "healthy" => false,
+               "ready" => false
              }
            }
   end

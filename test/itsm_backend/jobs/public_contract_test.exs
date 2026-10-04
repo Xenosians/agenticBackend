@@ -3,13 +3,9 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
 
   alias ItsmBackend.Jobs.PublicContract
 
-  # ------------------------------------------------------------
-  # Create request
-  # ------------------------------------------------------------
-
-  test "accepts create request without conversation id" do
+  test "accepts current authenticated create request" do
     payload = %{
-      "user_id" => "jdoe",
+      "chat_id" => "chat-123",
       "message" => "Check my account."
     }
 
@@ -17,18 +13,7 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
              PublicContract.validate_create_request(payload)
   end
 
-  test "accepts create request with conversation id" do
-    payload = %{
-      "user_id" => "jdoe",
-      "conversation_id" => "conversation-123",
-      "message" => "Continue this conversation."
-    }
-
-    assert {:ok, ^payload} =
-             PublicContract.validate_create_request(payload)
-  end
-
-  test "rejects explicitly blank conversation id" do
+  test "rejects blank chat id" do
     assert {:error,
             {
               :invalid_job_create_request,
@@ -36,9 +21,25 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
               errors
             }} =
              PublicContract.validate_create_request(%{
-               "user_id" => "jdoe",
-               "conversation_id" => "",
+               "chat_id" => "",
                "message" => "hello"
+             })
+
+    assert is_list(errors)
+    assert errors != []
+  end
+
+  test "rejects browser supplied user authority" do
+    assert {:error,
+            {
+              :invalid_job_create_request,
+              :contract_violation,
+              errors
+            }} =
+             PublicContract.validate_create_request(%{
+               "chat_id" => "chat-123",
+               "message" => "hello",
+               "user_id" => "forged-user"
              })
 
     assert is_list(errors)
@@ -53,7 +54,7 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
               errors
             }} =
              PublicContract.validate_create_request(%{
-               "user_id" => "jdoe",
+               "chat_id" => "chat-123",
                "message" => "hello",
                "debug" => true
              })
@@ -71,10 +72,6 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
             }} =
              PublicContract.validate_create_request("invalid")
   end
-
-  # ------------------------------------------------------------
-  # Create response
-  # ------------------------------------------------------------
 
   test "builds canonical pending create response" do
     assert {:ok,

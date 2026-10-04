@@ -44,7 +44,8 @@ defmodule ItsmBackend.Chats.SurrealStore do
     RETURN AFTER;
     """
 
-    with {:ok, results} <- Surreal.query(statement, %{"table" => @table, "id" => chat_id, "now" => now}),
+    with {:ok, results} <-
+           Surreal.query(statement, %{"table" => @table, "id" => chat_id, "now" => now}),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
     end

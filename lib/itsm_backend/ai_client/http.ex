@@ -55,6 +55,7 @@ defmodule ItsmBackend.AIClient.HTTP do
     execute_job(job_id, attempt, user_id, message, [])
   end
 
+  @impl true
   def execute_job(
         job_id,
         attempt,

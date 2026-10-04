@@ -48,10 +48,12 @@ defmodule ItsmBackend.Auth do
       token = token_record(token_id, user_id, "verify_email", config.verification_ttl_seconds)
 
       case SurrealStore.create_registration(user, identity, token) do
-        :ok -> {:ok, public_user(user), raw_token}
+        :ok ->
+          {:ok, public_user(user), raw_token}
+
         {:error, reason} ->
           case SurrealStore.find_user_by_email_key(email_key(email)) do
-            {:ok, %{} } -> {:error, :email_taken}
+            {:ok, %{}} -> {:error, :email_taken}
             _ -> {:error, reason}
           end
       end
@@ -66,7 +68,8 @@ defmodule ItsmBackend.Auth do
   def register(_), do: {:error, :invalid_request}
 
   @spec login(String.t(), String.t(), String.t() | nil) ::
-          {:ok, map()} | {:error, :invalid_credentials | :email_not_verified | :account_disabled | term()}
+          {:ok, map()}
+          | {:error, :invalid_credentials | :email_not_verified | :account_disabled | term()}
   def login(email_input, password, user_agent)
       when is_binary(password) do
     with {:ok, email} <- normalize_email(email_input),
@@ -142,7 +145,14 @@ defmodule ItsmBackend.Auth do
          {:ok, user} <- SurrealStore.find_user_by_email_key(email_key(email)),
          true <- is_map(user) && user["status"] == "pending_verification" do
       raw = random_token()
-      record = token_record(token_hash(raw), user["user_id"], "verify_email", config.verification_ttl_seconds)
+
+      record =
+        token_record(
+          token_hash(raw),
+          user["user_id"],
+          "verify_email",
+          config.verification_ttl_seconds
+        )
 
       case SurrealStore.create_token(record) do
         :ok -> {:ok, public_user(user), raw}
@@ -160,7 +170,14 @@ defmodule ItsmBackend.Auth do
          {:ok, user} <- SurrealStore.find_user_by_email_key(email_key(email)),
          true <- is_map(user) && user["status"] == "active" do
       raw = random_token()
-      record = token_record(token_hash(raw), user["user_id"], "reset_password", config.password_reset_ttl_seconds)
+
+      record =
+        token_record(
+          token_hash(raw),
+          user["user_id"],
+          "reset_password",
+          config.password_reset_ttl_seconds
+        )
 
       case SurrealStore.create_token(record) do
         :ok -> {:ok, public_user(user), raw}

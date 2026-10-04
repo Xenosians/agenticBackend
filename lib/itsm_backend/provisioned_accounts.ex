@@ -20,16 +20,17 @@ defmodule ItsmBackend.ProvisionedAccounts do
          {:ok, role} <- optional(attrs, "role", 200),
          {:ok, temporary_password} <- secret(attrs),
          {:ok, vault} <- credential_vault(),
-         {:ok, records} <- build_records(
-           directory_user_id,
-           email,
-           given_name,
-           family_name,
-           department,
-           role,
-           temporary_password,
-           vault
-         ),
+         {:ok, records} <-
+           build_records(
+             directory_user_id,
+             email,
+             given_name,
+             family_name,
+             department,
+             role,
+             temporary_password,
+             vault
+           ),
          :ok <- SurrealStore.create(records.account, records.credential) do
       {:ok,
        %{

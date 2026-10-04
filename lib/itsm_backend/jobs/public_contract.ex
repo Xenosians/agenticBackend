@@ -93,72 +93,29 @@ defmodule ItsmBackend.Jobs.PublicContract do
   @spec build_job_response(Job.t()) ::
           {:ok, map()}
           | {:error, term()}
-  def build_job_response(
-        %Job{} = job
-      ) do
+  def build_job_response(%Job{} = job) do
     payload = %{
-      "job_id" =>
-        job.id,
-
-      "user_id" =>
-        job.user_id,
-
-      "conversation_id" =>
-        job.conversation_id,
-
-      "chat_id" =>
-        job.conversation_id,
-
-      "message" =>
-        job.message,
-
-      "status" =>
-        job.status,
-
-      "attempts" =>
-        job.attempts,
-
-      "created_at" =>
-        encode_datetime(
-          job.created_at
-        ),
-
-      "claimed_at" =>
-        encode_datetime(
-          job.claimed_at
-        ),
-
-      "lease_expires_at" =>
-        encode_datetime(
-          job.lease_expires_at
-        ),
-
-      "completed_at" =>
-        encode_datetime(
-          job.completed_at
-        ),
-
-      "selected_agent" =>
-        job.selected_agent,
-
-      "proposed_tool" =>
-        job.proposed_tool,
-
-      "result" =>
-        job.result,
-
-      "error" =>
-        job.error
+      "job_id" => job.id,
+      "user_id" => job.user_id,
+      "conversation_id" => job.conversation_id,
+      "chat_id" => job.conversation_id,
+      "message" => job.message,
+      "status" => job.status,
+      "attempts" => job.attempts,
+      "created_at" => encode_datetime(job.created_at),
+      "claimed_at" => encode_datetime(job.claimed_at),
+      "lease_expires_at" => encode_datetime(job.lease_expires_at),
+      "completed_at" => encode_datetime(job.completed_at),
+      "selected_agent" => job.selected_agent,
+      "proposed_tool" => job.proposed_tool,
+      "result" => job.result,
+      "error" => job.error
     }
 
     with :ok <-
-           validate_job_response_envelope(
-             payload
-           ),
+           validate_job_response_envelope(payload),
          :ok <-
-           validate_proposed_tool(
-             job.proposed_tool
-           ) do
+           validate_proposed_tool(job.proposed_tool) do
       {:ok, payload}
     end
   end
@@ -176,9 +133,7 @@ defmodule ItsmBackend.Jobs.PublicContract do
   # Public response validation
   # ------------------------------------------------------------
 
-  defp validate_job_response_envelope(
-         payload
-       ) do
+  defp validate_job_response_envelope(payload) do
     case Contracts.validate(
            :job_response,
            payload
@@ -204,12 +159,8 @@ defmodule ItsmBackend.Jobs.PublicContract do
     :ok
   end
 
-  defp validate_proposed_tool(
-         proposed_tool
-       )
-       when is_map(
-              proposed_tool
-            ) do
+  defp validate_proposed_tool(proposed_tool)
+       when is_map(proposed_tool) do
     case Contracts.validate(
            :tool_proposal,
            proposed_tool
@@ -227,9 +178,7 @@ defmodule ItsmBackend.Jobs.PublicContract do
     end
   end
 
-  defp validate_proposed_tool(
-         proposed_tool
-       ) do
+  defp validate_proposed_tool(proposed_tool) do
     {:error,
      {
        :invalid_job_response,
@@ -246,12 +195,8 @@ defmodule ItsmBackend.Jobs.PublicContract do
     nil
   end
 
-  defp encode_datetime(
-         %DateTime{} = datetime
-       ) do
-    DateTime.to_iso8601(
-      datetime
-    )
+  defp encode_datetime(%DateTime{} = datetime) do
+    DateTime.to_iso8601(datetime)
   end
 
   defp encode_datetime(value) do

@@ -23,6 +23,7 @@ defmodule ItsmBackend.Application do
         }
       ] ++
         queue_worker_children() ++
+        mail_outbox_worker_children() ++
         [
           ItsmBackendWeb.Endpoint
         ]
@@ -58,6 +59,36 @@ defmodule ItsmBackend.Application do
       ]
     else
       []
+    end
+  end
+
+  # ------------------------------------------------------------
+  # Durable mail outbox worker
+  # ------------------------------------------------------------
+
+  defp mail_outbox_worker_children do
+    case Application.get_env(
+           :itsm_backend,
+           :mail_outbox
+         ) do
+      config when is_list(config) ->
+        if Keyword.get(config, :enabled, false) do
+          [
+            {
+              ItsmBackend.Mail.OutboxWorker,
+              [
+                poll_interval_ms: Keyword.fetch!(config, :poll_interval_ms),
+                lease_seconds: Keyword.fetch!(config, :lease_seconds),
+                max_attempts: Keyword.fetch!(config, :max_attempts)
+              ]
+            }
+          ]
+        else
+          []
+        end
+
+      _ ->
+        []
     end
   end
 

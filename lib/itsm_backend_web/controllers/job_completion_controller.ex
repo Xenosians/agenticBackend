@@ -1,9 +1,13 @@
 defmodule ItsmBackendWeb.JobCompletionController do
   use ItsmBackendWeb, :controller
 
+  require Logger
+
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.CompletionContract
+  alias ItsmBackend.Jobs.JobNotifications
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackendWeb.PublicError
 
   # ------------------------------------------------------------
   # POST completion callback
@@ -79,6 +83,10 @@ defmodule ItsmBackendWeb.JobCompletionController do
            completion
          ) do
       {:ok, job, disposition} ->
+        if disposition == :applied do
+          JobNotifications.enqueue_best_effort(job)
+        end
+
         send_completion_ack(
           conn,
           job.id,
@@ -134,12 +142,15 @@ defmodule ItsmBackendWeb.JobCompletionController do
         })
 
       {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{
-          error: "completion_failed",
-          reason: inspect(reason)
-        })
+        Logger.error("durable completion failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "completion_failed",
+          "The durable completion could not be persisted.",
+          retryable: true
+        )
     end
   end
 
@@ -164,12 +175,14 @@ defmodule ItsmBackendWeb.JobCompletionController do
         |> json(acknowledgement)
 
       {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{
-          error: "completion_ack_contract_violation",
-          reason: inspect(reason)
-        })
+        Logger.error("completion acknowledgement contract failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "completion_ack_contract_violation",
+          "The completion acknowledgement could not be produced."
+        )
     end
   end
 
