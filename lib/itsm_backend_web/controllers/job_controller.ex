@@ -1,6 +1,8 @@
 defmodule ItsmBackendWeb.JobController do
   use ItsmBackendWeb, :controller
 
+  require Logger
+
   alias ItsmBackend.Auth.Authorization
   alias ItsmBackend.Chats
   alias ItsmBackend.Jobs
@@ -8,6 +10,7 @@ defmodule ItsmBackendWeb.JobController do
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
+  alias ItsmBackendWeb.PublicError
 
   def create(conn, _params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
@@ -41,9 +44,14 @@ defmodule ItsmBackendWeb.JobController do
         conn |> put_status(:unprocessable_entity) |> json(%{error: "invalid_request"})
 
       {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "job_creation_failed", reason: inspect(reason)})
+        Logger.error("job creation failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "job_creation_failed",
+          "The job could not be created."
+        )
     end
   end
 
@@ -67,9 +75,15 @@ defmodule ItsmBackendWeb.JobController do
         conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
 
       {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "job_lookup_failed", reason: inspect(reason)})
+        Logger.error("job lookup failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "job_lookup_failed",
+          "The job could not be loaded.",
+          retryable: true
+        )
     end
   end
 
@@ -104,14 +118,25 @@ defmodule ItsmBackendWeb.JobController do
         conn |> put_status(:conflict) |> json(%{error: "approval_id_missing"})
 
       {:error, {:approval_service_failed, reason}} ->
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "approval_service_failed", reason: inspect(reason)})
+        Logger.error("approval service failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :bad_gateway,
+          "approval_service_failed",
+          "The approved action could not be executed by the AI service.",
+          retryable: true
+        )
 
       {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "job_approval_failed", reason: inspect(reason)})
+        Logger.error("job approval failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "job_approval_failed",
+          "The approval could not be completed."
+        )
     end
   end
 

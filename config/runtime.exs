@@ -186,6 +186,15 @@ else
 end
 
 # ------------------------------------------------------------
+# Task-completion mail lifecycle
+# ------------------------------------------------------------
+
+config :itsm_backend,
+       :task_completion_mail,
+       enabled: System.get_env("TASK_COMPLETION_MAIL_ENABLED") || "false",
+       poll_interval_ms: System.get_env("TASK_COMPLETION_MAIL_POLL_INTERVAL_MS") || "5000"
+
+# ------------------------------------------------------------
 # Internal service authentication
 # ------------------------------------------------------------
 
@@ -386,26 +395,39 @@ config :itsm_backend,
 # Outbound mail transport
 #
 # MAILER_MODE=local
-#   Development-only in-process Swoosh mailbox. Inspect through
-#   the Phoenix-mounted /dev/mailbox route in the SAME BEAM node.
+#   Development-only in-process Swoosh mailbox.
+#
+# MAILER_MODE=brevo_api
+#   Real transactional delivery through Brevo's HTTPS API.
+#   Authentication uses a static API key. No SMTP or OAuth
+#   refresh-token exchange is involved.
 #
 # MAILER_MODE=gmail_api
-#   Real email delivery through the Gmail REST API using OAuth2.
-#   A long-lived refresh token is stored server-side and exchanged
-#   for short-lived access tokens when mail is delivered.
-#
-#   No SMTP password, App Password, STARTTLS, or gen_smtp is used.
+#   Legacy Gmail REST API fallback.
 # ------------------------------------------------------------
 
 if config_env() != :test do
   mailer_mode =
     (System.get_env("MAILER_MODE") ||
-       if(config_env() == :prod, do: "gmail_api", else: "local"))
+       if(
+         config_env() == :prod,
+         do: "brevo_api",
+         else: "local"
+       ))
     |> String.trim()
     |> String.downcase()
 
-  unless mailer_mode in ["local", "gmail_api"] do
-    raise "MAILER_MODE must be either local or gmail_api"
+  unless mailer_mode in [
+           "local",
+           "brevo_api",
+           "gmail_api"
+         ] do
+    raise """
+    MAILER_MODE must be one of:
+      local
+      brevo_api
+      gmail_api
+    """
   end
 
   config :itsm_backend,
@@ -415,16 +437,23 @@ if config_env() != :test do
   case mailer_mode do
     "local" ->
       if config_env() == :prod do
-        raise "MAILER_MODE=local is not allowed in production"
+        raise """
+        MAILER_MODE=local is not allowed in production.
+        """
       end
 
       config :itsm_backend,
              ItsmBackend.Mailer,
              adapter: Swoosh.Adapters.Local
 
+    "brevo_api" ->
+      required_env.("MAIL_FROM_EMAIL")
+
+      config :itsm_backend,
+             :brevo_api,
+             api_key: required_env.("BREVO_API_KEY")
+
     "gmail_api" ->
-      # MAIL_FROM_EMAIL must identify the Gmail account that granted
-      # the refresh token used below.
       required_env.("MAIL_FROM_EMAIL")
 
       config :itsm_backend,
@@ -437,6 +466,41 @@ if config_env() != :test do
              ItsmBackend.Mailer,
              adapter: Swoosh.Adapters.Gmail
   end
+
+  mail_outbox_enabled =
+    case (System.get_env("MAIL_OUTBOX_ENABLED") || "true")
+         |> String.trim()
+         |> String.downcase() do
+      value when value in ["1", "true", "yes", "on"] ->
+        true
+
+      value when value in ["0", "false", "no", "off"] ->
+        false
+
+      value ->
+        raise """
+        MAIL_OUTBOX_ENABLED must be true or false, got: #{inspect(value)}
+        """
+    end
+
+  config :itsm_backend,
+         :mail_outbox,
+         enabled: mail_outbox_enabled,
+         poll_interval_ms:
+           (System.get_env("MAIL_OUTBOX_POLL_INTERVAL_MS") || "5000")
+           |> then(fn value ->
+             parse_positive_integer_env.("MAIL_OUTBOX_POLL_INTERVAL_MS", value)
+           end),
+         lease_seconds:
+           (System.get_env("MAIL_OUTBOX_LEASE_SECONDS") || "60")
+           |> then(fn value ->
+             parse_positive_integer_env.("MAIL_OUTBOX_LEASE_SECONDS", value)
+           end),
+         max_attempts:
+           (System.get_env("MAIL_OUTBOX_MAX_ATTEMPTS") || "8")
+           |> then(fn value ->
+             parse_positive_integer_env.("MAIL_OUTBOX_MAX_ATTEMPTS", value)
+           end)
 end
 
 # ------------------------------------------------------------

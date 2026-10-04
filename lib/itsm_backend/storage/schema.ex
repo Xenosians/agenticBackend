@@ -17,10 +17,12 @@ defmodule ItsmBackend.Storage.Schema do
     "DEFINE TABLE IF NOT EXISTS auth_session SCHEMALESS PERMISSIONS NONE;",
     "DEFINE TABLE IF NOT EXISTS auth_token SCHEMALESS PERMISSIONS NONE;",
     "DEFINE TABLE IF NOT EXISTS chat SCHEMALESS PERMISSIONS NONE;",
+    "DEFINE TABLE IF NOT EXISTS mail_outbox SCHEMALESS PERMISSIONS NONE;",
     "DEFINE INDEX IF NOT EXISTS auth_identity_user_id ON TABLE auth_identity FIELDS user_id UNIQUE;",
     "DEFINE INDEX IF NOT EXISTS auth_session_token_hash ON TABLE auth_session FIELDS token_hash UNIQUE;",
     "DEFINE INDEX IF NOT EXISTS auth_session_user_id ON TABLE auth_session FIELDS user_id;",
     "DEFINE INDEX IF NOT EXISTS auth_token_user_purpose ON TABLE auth_token FIELDS user_id, purpose;",
+    "DEFINE INDEX IF NOT EXISTS mail_outbox_status_next_attempt ON TABLE mail_outbox FIELDS status, next_attempt_at;",
     "DEFINE INDEX IF NOT EXISTS chat_user_id ON TABLE chat FIELDS user_id;"
   ]
 

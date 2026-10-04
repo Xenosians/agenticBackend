@@ -258,35 +258,48 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # ------------------------------------------------------------
 
   defp dispatch_to_ai(ai_client, %Job{} = job) do
+    with {:ok, context} <- bounded_context(job) do
+      ItsmBackend.AIClient.dispatch_job(
+        ai_client,
+        job.id,
+        job.attempts,
+        job.user_id,
+        job.message,
+        context
+      )
+    end
+  end
+
+  defp bounded_context(%Job{} = job) do
     auth = RuntimeConfig.auth!()
 
-    if auth.ai_context_enabled and is_binary(job.conversation_id) do
+    if auth.ai_context_enabled and
+         is_binary(job.conversation_id) do
       case Chats.ai_context(
              job.user_id,
              job.conversation_id,
              job.id,
              auth.ai_context_max_turns
            ) do
+        {:ok, context} when is_list(context) ->
+          {:ok, context}
+
         {:ok, context} ->
-          if function_exported?(ai_client, :execute_job, 5) do
-            apply(ai_client, :execute_job, [
-              job.id,
-              job.attempts,
-              job.user_id,
-              job.message,
-              context
-            ])
-          else
-            # Compatibility for isolated test clients. The production
-            # HTTP client implements /5 when context is enabled.
-            ai_client.execute_job(job.id, job.attempts, job.user_id, job.message)
-          end
+          {:error,
+           {
+             :context_projection_failed,
+             {:invalid_context, context}
+           }}
 
         {:error, reason} ->
-          {:error, {:context_projection_failed, reason}}
+          {:error,
+           {
+             :context_projection_failed,
+             reason
+           }}
       end
     else
-      ai_client.execute_job(job.id, job.attempts, job.user_id, job.message)
+      {:ok, []}
     end
   end
 

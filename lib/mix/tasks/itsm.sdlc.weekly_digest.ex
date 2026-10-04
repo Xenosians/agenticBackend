@@ -1,7 +1,7 @@
 defmodule Mix.Tasks.Itsm.Sdlc.WeeklyDigest do
   use Mix.Task
 
-  @shortdoc "Sends the weekly SDLC digest through the Gmail OAuth mail boundary"
+  @shortdoc "Sends the weekly SDLC digest through the configured real mail transport"
 
   @requirements ["app.config"]
 
@@ -95,7 +95,7 @@ defmodule Mix.Tasks.Itsm.Sdlc.WeeklyDigest do
 
       :ok
     else
-      ensure_gmail_api!()
+      ensure_real_mailer!()
 
       results =
         Enum.map(
@@ -235,7 +235,7 @@ defmodule Mix.Tasks.Itsm.Sdlc.WeeklyDigest do
     Mix.raise("recipient #{field} must be a string")
   end
 
-  defp ensure_gmail_api! do
+  defp ensure_real_mailer! do
     mode =
       :itsm_backend
       |> Application.get_env(
@@ -247,10 +247,13 @@ defmodule Mix.Tasks.Itsm.Sdlc.WeeklyDigest do
         "local"
       )
 
-    if mode != "gmail_api" do
+    unless mode in [
+             "brevo_api",
+             "gmail_api"
+           ] do
       Mix.raise(
-        "real weekly delivery requires MAILER_MODE=gmail_api; " <>
-          "use --dry-run while mail is not configured"
+        "real weekly delivery requires a real mail transport; " <>
+          "configure MAILER_MODE=brevo_api or use --dry-run"
       )
     end
   end
@@ -286,6 +289,7 @@ defmodule Mix.Tasks.Itsm.Sdlc.WeeklyDigest do
       )
 
     [
+      "BREVO_API_KEY",
       "GMAIL_CLIENT_SECRET",
       "GMAIL_REFRESH_TOKEN"
     ]
