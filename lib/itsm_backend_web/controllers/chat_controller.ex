@@ -58,6 +58,37 @@ defmodule ItsmBackendWeb.ChatController do
     end
   end
 
+  def delete(conn, %{"id" => chat_id}) do
+    case AuthRequest.require_authenticated(conn, csrf: true) do
+      {:ok, conn, ctx} ->
+        case Chats.archive(ctx.user, chat_id) do
+          {:ok, _chat} ->
+            json(conn, %{
+              chat_id: chat_id,
+              deleted: true
+            })
+
+          {:error, :not_found} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: "chat_not_found"})
+
+          {:error, :forbidden} ->
+            conn
+            |> put_status(:forbidden)
+            |> json(%{error: "forbidden"})
+
+          {:error, _} ->
+            conn
+            |> put_status(:internal_server_error)
+            |> json(%{error: "chat_delete_failed"})
+        end
+
+      {:error, conn} ->
+        conn
+    end
+  end
+
   def history(conn, %{"id" => chat_id} = params) do
     case AuthRequest.require_authenticated(conn) do
       {:ok, conn, ctx} ->

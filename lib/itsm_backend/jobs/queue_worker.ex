@@ -141,6 +141,24 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # ------------------------------------------------------------
 
   defp maybe_dispatch(state) do
+    case Jobs.pending?() do
+      {:ok, false} ->
+        state
+
+      {:ok, true} ->
+        maybe_dispatch_pending(state)
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to inspect pending AI jobs: " <>
+            inspect(reason)
+        )
+
+        state
+    end
+  end
+
+  defp maybe_dispatch_pending(state) do
     ai_client =
       RuntimeConfig.ai_client!()
 

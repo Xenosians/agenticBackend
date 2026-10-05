@@ -39,6 +39,17 @@ defmodule ItsmBackend.Chats do
 
   def touch(chat_id), do: SurrealStore.touch(chat_id, now())
 
+  def archive(user, chat_id) do
+    with {:ok, _chat} <- get_authorized(user, chat_id),
+         {:ok, archived} <- SurrealStore.archive(chat_id, now()),
+         true <- is_map(archived) || {:error, :not_found} do
+      {:ok, archived}
+    else
+      {:error, _} = error -> error
+      _ -> {:error, :not_found}
+    end
+  end
+
   def history(user, chat_id, limit \\ 100) do
     with {:ok, chat} <- get_authorized(user, chat_id),
          {:ok, jobs} <- Jobs.list_by_conversation(chat["user_id"], chat_id, limit) do

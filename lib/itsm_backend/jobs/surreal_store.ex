@@ -13,6 +13,49 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   @table "job"
 
   # ------------------------------------------------------------
+  # Pending work discovery
+  # ------------------------------------------------------------
+
+  @spec pending?() ::
+          {:ok, boolean()}
+          | {:error, term()}
+
+  def pending? do
+    statement = """
+    SELECT id
+    FROM job
+    WHERE status = "pending"
+    LIMIT 1;
+    """
+
+    with {:ok, response} <-
+           Surreal.query(statement),
+         {:ok, result} <-
+           extract_result(response) do
+      case result do
+        nil ->
+          {:ok, false}
+
+        [] ->
+          {:ok, false}
+
+        [_ | _] ->
+          {:ok, true}
+
+        record when is_map(record) ->
+          {:ok, true}
+
+        other ->
+          {:error,
+           {
+             :unexpected_pending_probe,
+             other
+           }}
+      end
+    end
+  end
+
+  # ------------------------------------------------------------
   # Queue claiming
   # ------------------------------------------------------------
 

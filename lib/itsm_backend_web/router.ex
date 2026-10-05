@@ -30,6 +30,7 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/chats", ChatController, :index
     get "/v1/chats/:id", ChatController, :show
     get "/v1/chats/:id/history", ChatController, :history
+    delete "/v1/chats/:id", ChatController, :delete
 
     post "/v1/agent/run",
          AgentController,

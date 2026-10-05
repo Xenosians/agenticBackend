@@ -17,12 +17,12 @@ defmodule ItsmBackend.ContractsRuntimeTest do
            ]
   end
 
-  test "validates a known contract" do
+  test "validates the authenticated chat-owned public create contract" do
     assert :ok =
              Contracts.validate(
                :job_create_request,
                %{
-                 "user_id" => "jdoe",
+                 "chat_id" => "chat-123",
                  "message" => "hello"
                }
              )
