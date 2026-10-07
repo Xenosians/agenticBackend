@@ -69,6 +69,23 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
+  def integrations do
+    {:ok,
+     %{
+       "integrations" => [
+         %{
+           "id" => "palo_alto",
+           "name" => "Palo Alto Networks PAN-OS",
+           "configured" => false,
+           "host" => nil,
+           "verify_tls" => true,
+           "mode" => "read_only_v1"
+         }
+       ]
+     }}
+  end
+
+  @impl true
   def health do
     {:ok,
      %{

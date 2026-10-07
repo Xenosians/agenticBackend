@@ -1,6 +1,15 @@
 defmodule ItsmBackendWeb.JobController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract :create,
+    required_body: ["chat_id", "message"]
+
+  request_contract :show, []
+  request_contract :approve, []
+
   require Logger
 
   alias ItsmBackend.Auth.Authorization

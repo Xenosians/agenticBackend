@@ -165,6 +165,29 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   # ------------------------------------------------------------
+  # Integration status
+  # ------------------------------------------------------------
+
+  @impl true
+  def integrations do
+    config = RuntimeConfig.ai_service!()
+
+    case Req.get(
+           "#{config.base_url}/v1/integrations",
+           receive_timeout: config.health_timeout_ms
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        {:ok, body}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:ai_service_error, status, body}}
+
+      {:error, reason} ->
+        {:error, {:request_failed, reason}}
+    end
+  end
+
+  # ------------------------------------------------------------
   # Health
   # ------------------------------------------------------------
 

@@ -1,6 +1,12 @@
 defmodule ItsmBackendWeb.AgentController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract :run,
+    required_body: ["message"]
+
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
 

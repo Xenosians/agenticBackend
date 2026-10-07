@@ -1,6 +1,12 @@
 defmodule ItsmBackendWeb.HealthController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract :index,
+    operation_kind: "read"
+
   alias ItsmBackend.RuntimeConfig
 
   # ------------------------------------------------------------

@@ -1,6 +1,13 @@
 defmodule ItsmBackendWeb.JobCompletionController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract :complete,
+    required_body: ["attempt", "status", "selected_agent", "proposed_tool"],
+    optional_body: ["result", "error"]
+
   require Logger
 
   alias ItsmBackend.Jobs

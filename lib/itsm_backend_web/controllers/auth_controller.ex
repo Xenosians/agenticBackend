@@ -1,6 +1,30 @@
 defmodule ItsmBackendWeb.AuthController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract :register,
+    required_body: ["email", "display_name", "password"]
+
+  request_contract :verify_email,
+    required_body: ["token"]
+
+  request_contract :resend_verification,
+    required_body: ["email"]
+
+  request_contract :login,
+    required_body: ["email", "password"]
+
+  request_contract :me, []
+  request_contract :logout, []
+
+  request_contract :forgot_password,
+    required_body: ["email"]
+
+  request_contract :reset_password,
+    required_body: ["token", "new_password"]
+
   alias ItsmBackend.Auth
   alias ItsmBackend.Auth.AccountsMailer
   alias ItsmBackend.RuntimeConfig

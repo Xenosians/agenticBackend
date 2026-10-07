@@ -1,8 +1,24 @@
 defmodule ItsmBackendWeb.ChatController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract(:create,
+    optional_body: ["title"]
+  )
+
+  request_contract(:index, [])
+  request_contract(:show, [])
+
+  request_contract(:history,
+    optional_query: ["limit"]
+  )
+
   alias ItsmBackend.Chats
   alias ItsmBackendWeb.AuthRequest
+
+  request_contract(:delete, [])
 
   def create(conn, params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
