@@ -14,7 +14,8 @@ defmodule ItsmBackend.Jobs do
 
   @terminal_statuses [
     "completed",
-    "failed"
+    "failed",
+    "reconciliation_required"
   ]
 
   # ------------------------------------------------------------

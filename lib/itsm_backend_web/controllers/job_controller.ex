@@ -4,17 +4,19 @@ defmodule ItsmBackendWeb.JobController do
   use ItsmBackendWeb.RequestContract
 
   # SRS18_REQUEST_CONTRACT_V1
-  request_contract :create,
+  request_contract(:create,
     required_body: ["chat_id", "message"]
+  )
 
-  request_contract :show, []
-  request_contract :approve, []
+  request_contract(:show, [])
+  request_contract(:approve, [])
 
   require Logger
 
   alias ItsmBackend.Auth.Authorization
   alias ItsmBackend.Chats
   alias ItsmBackend.Jobs
+  alias ItsmBackend.Jobs.ApprovalOutcome
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackend.RuntimeConfig
@@ -108,7 +110,8 @@ defmodule ItsmBackendWeb.JobController do
          true <- Authorization.owns_resource?(user, job.user_id) || {:error, :forbidden},
          {:ok, approval_id} <- approval_id(job),
          {:ok, approval_result} <- execute_approval(approval_id),
-         {:ok, completed_job} <- complete_approved_job(job, approval_result),
+         {:ok, approval_outcome} <- ApprovalOutcome.normalize(approval_result),
+         {:ok, completed_job} <- complete_approved_job(job, approval_outcome),
          {:ok, response} <- PublicContract.build_job_response(completed_job) do
       json(conn, response)
     else
@@ -133,7 +136,18 @@ defmodule ItsmBackendWeb.JobController do
           conn,
           :bad_gateway,
           "approval_service_failed",
-          "The approved action could not be executed by the AI service.",
+          "The approval request could not be delivered to the AI service.",
+          retryable: true
+        )
+
+      {:error, {:invalid_approval_outcome, reason}} ->
+        Logger.error("invalid approval outcome: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :bad_gateway,
+          "approval_contract_invalid",
+          "The AI service returned an invalid approval outcome.",
           retryable: true
         )
 
@@ -169,17 +183,38 @@ defmodule ItsmBackendWeb.JobController do
     end
   end
 
-  defp complete_approved_job(%Job{status: "waiting_approval"} = job, approval_result)
-       when is_map(approval_result) do
-    previous_result = if is_map(job.result), do: job.result, else: %{}
+  defp complete_approved_job(
+         %Job{status: "waiting_approval"} = job,
+         approval_outcome
+       )
+       when is_map(approval_outcome) do
+    previous_result =
+      if is_map(job.result), do: job.result, else: %{}
 
-    completed_result =
+    target_status =
+      ApprovalOutcome.target_job_status(approval_outcome)
+
+    message =
+      ApprovalOutcome.message(approval_outcome)
+
+    stored_result =
       previous_result
-      |> Map.put("approval_execution", approval_result)
-      |> Map.put("answer", approval_answer(approval_result))
+      |> Map.put("approval_execution", approval_outcome)
+      |> put_approval_answer(target_status, approval_outcome, message)
 
-    with {:ok, transitioned} <-
-           job |> Job.put_result(completed_result) |> Job.transition("completed"),
+    job = Job.put_result(job, stored_result)
+
+    job =
+      if target_status in ["failed", "reconciliation_required"] do
+        Job.put_error(
+          job,
+          message || "Approved action did not complete successfully."
+        )
+      else
+        job
+      end
+
+    with {:ok, transitioned} <- Job.transition(job, target_status),
          {:ok, stored} <- Jobs.update(transitioned) do
       {:ok, stored}
     end
@@ -187,6 +222,22 @@ defmodule ItsmBackendWeb.JobController do
 
   defp complete_approved_job(%Job{status: status}, _),
     do: {:error, {:job_not_waiting_approval, status}}
+
+  defp put_approval_answer(result, "completed", approval_outcome, _message) do
+    Map.put(
+      result,
+      "answer",
+      approval_answer(approval_outcome)
+    )
+  end
+
+  defp put_approval_answer(result, _status, _approval_outcome, message) do
+    Map.put(
+      result,
+      "answer",
+      message || "Approved action requires operator attention."
+    )
+  end
 
   defp approval_answer(result) do
     Map.get(result, "answer") ||

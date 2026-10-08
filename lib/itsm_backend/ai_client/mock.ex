@@ -60,11 +60,16 @@ defmodule ItsmBackend.AIClient.Mock do
   def approve(approval_id) do
     {:ok,
      %{
-       approval_id: approval_id,
-       status: "executed",
-       result: %{
-         ok: true
-       }
+       "approval_id" => approval_id,
+       "protocol_status" => "processed",
+       "execution_status" => "succeeded",
+       "approval_status" => "approved",
+       "replayed" => false,
+       "result" => %{
+         "ok" => true,
+         "status" => "success"
+       },
+       "error" => nil
      }}
   end
 

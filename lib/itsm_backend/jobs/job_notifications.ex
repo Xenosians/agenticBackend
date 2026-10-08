@@ -15,6 +15,7 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
   @notifiable_statuses [
     "waiting_approval",
+    "reconciliation_required",
     "completed",
     "failed"
   ]
@@ -93,6 +94,7 @@ defmodule ItsmBackend.Jobs.JobNotifications do
     subject =
       case job.status do
         "waiting_approval" -> "Agentic ITSM — approval required"
+        "reconciliation_required" -> "Agentic ITSM — reconciliation required"
         "completed" -> "Agentic ITSM — request completed"
         "failed" -> "Agentic ITSM — request failed"
       end
@@ -100,6 +102,8 @@ defmodule ItsmBackend.Jobs.JobNotifications do
     status_text =
       case job.status do
         "waiting_approval" -> "Your request is waiting for approval."
+        "reconciliation_required" ->
+          "The approved action has an unresolved execution outcome. Automatic retry is disabled and trusted reconciliation is required."
         "completed" -> "Your request completed successfully."
         "failed" -> "Your request could not be completed."
       end
