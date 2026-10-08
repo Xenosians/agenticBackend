@@ -49,6 +49,10 @@ defmodule ItsmBackendWeb.Router do
          JobController,
          :approve
 
+    get "/v2/chats/:id/history", ChatController, :history
+    get "/v2/jobs/:id", JobController, :show
+    post "/v2/jobs/:id/approve", JobController, :approve
+
     # ----------------------------------------------------------
     # Internal AI -> Phoenix durable-job protocol
     # ----------------------------------------------------------

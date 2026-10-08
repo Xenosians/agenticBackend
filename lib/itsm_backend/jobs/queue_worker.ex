@@ -397,7 +397,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
          ) do
       {:ok,
        %Job{
-         status: "failed"
+         status: "outcome_unknown"
        } = failed_job} ->
         Logger.warning(
           "Expired AI job failed closed " <>

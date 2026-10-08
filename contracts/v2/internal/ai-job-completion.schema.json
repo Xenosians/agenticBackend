@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v2:internal:ai-job-completion",
+  "title": "AI Job Completion",
+  "description": "Internal durable AI-to-Phoenix completion callback for one execution attempt.",
+  "type": "object",
+  "required": [
+    "attempt",
+    "status",
+    "selected_agent",
+    "proposed_tool",
+    "contract_version"
+  ],
+  "properties": {
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "waiting_approval",
+        "failed",
+        "denied",
+        "outcome_unknown"
+      ]
+    },
+    "selected_agent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "proposed_tool": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "When non-null, the object must also satisfy the canonical tool-proposal contract."
+    },
+    "result": {
+      "type": "object"
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contract_version": {
+      "const": 2
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "failed",
+              "denied",
+              "outcome_unknown"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "error"
+        ],
+        "not": {
+          "required": [
+            "result"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "waiting_approval"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ],
+        "not": {
+          "required": [
+            "error"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

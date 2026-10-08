@@ -342,12 +342,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     with {:ok, failed_job} <-
            Job.transition(
              failed_job,
-             "failed"
+             "outcome_unknown"
            ) do
       statement = """
       UPDATE type::record($table, $id)
       SET
-        status = "failed",
+        status = "outcome_unknown",
         error = $error,
         completed_at = $completed_at,
         lease_expires_at = $cleared_lease

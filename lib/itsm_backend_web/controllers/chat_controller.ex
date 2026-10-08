@@ -110,7 +110,9 @@ defmodule ItsmBackendWeb.ChatController do
       {:ok, conn, ctx} ->
         limit = parse_limit(Map.get(params, "limit"))
 
-        case Chats.history(ctx.user, chat_id, limit) do
+        version = if Enum.at(conn.path_info, 1) == "v2", do: 2, else: 1
+
+        case Chats.history(ctx.user, chat_id, limit, version) do
           {:ok, messages} ->
             json(conn, %{chat_id: chat_id, messages: messages})
 

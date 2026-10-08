@@ -14,6 +14,7 @@ defmodule ItsmBackend.Jobs.CompletionContract do
   """
 
   alias ItsmBackend.Contracts
+  alias ItsmBackend.Jobs.Lifecycle
 
   # ------------------------------------------------------------
   # AI -> Phoenix completion
@@ -60,17 +61,18 @@ defmodule ItsmBackend.Jobs.CompletionContract do
   def build_ack(
         job_id,
         status,
-        disposition
-      ) do
+        disposition,
+        version \\ 1
+      ) when version in [1, 2] do
     with {:ok, acknowledgement} <-
            acknowledgement_value(disposition) do
       payload = %{
         "job_id" => job_id,
-        "status" => status,
+        "status" => Lifecycle.wire_status(status, version),
         "acknowledgement" => acknowledgement
       }
 
-      validate_ack(payload)
+      validate_ack(Lifecycle.versioned(payload, version), version)
     end
   end
 
@@ -80,7 +82,7 @@ defmodule ItsmBackend.Jobs.CompletionContract do
 
   defp validate_completion_envelope(payload) do
     case Contracts.validate(
-           :ai_job_completion,
+           if(Map.get(payload, "contract_version") == 2, do: :ai_job_completion_v2, else: :ai_job_completion),
            payload
          ) do
       :ok ->
@@ -136,9 +138,9 @@ defmodule ItsmBackend.Jobs.CompletionContract do
   # Completion acknowledgement
   # ------------------------------------------------------------
 
-  defp validate_ack(payload) do
+  defp validate_ack(payload, version) do
     case Contracts.validate(
-           :ai_job_completion_ack,
+           if(version == 2, do: :ai_job_completion_ack_v2, else: :ai_job_completion_ack),
            payload
          ) do
       :ok ->

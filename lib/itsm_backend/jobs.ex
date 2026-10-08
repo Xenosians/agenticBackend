@@ -7,12 +7,16 @@ defmodule ItsmBackend.Jobs do
   alias ItsmBackend.Jobs.SurrealStore
 
   @completion_statuses [
+    "denied",
+    "outcome_unknown",
     "completed",
     "failed",
     "waiting_approval"
   ]
 
   @terminal_statuses [
+    "denied",
+    "outcome_unknown",
     "completed",
     "failed",
     "reconciliation_required"
@@ -408,9 +412,9 @@ defmodule ItsmBackend.Jobs do
          %Job{
            status: "processing"
          } = job,
-         "failed",
+         failure_status,
          attrs
-       ) do
+       ) when failure_status in ["failed", "denied", "outcome_unknown"] do
     error =
       Map.get(
         attrs,
@@ -433,7 +437,7 @@ defmodule ItsmBackend.Jobs do
     with {:ok, transitioned_job} <-
            Job.transition(
              job,
-             "failed"
+             failure_status
            ),
          {:ok, stored_job} <-
            update(transitioned_job) do

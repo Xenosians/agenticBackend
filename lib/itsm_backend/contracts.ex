@@ -13,6 +13,9 @@ defmodule ItsmBackend.Contracts do
                   )
 
   @contract_files %{
+    job_response_v2: "../v2/public/job-response.schema.json",
+    ai_job_completion_v2: "../v2/internal/ai-job-completion.schema.json",
+    ai_job_completion_ack_v2: "../v2/internal/ai-job-completion-ack.schema.json",
     error: "common/error.schema.json",
     tool_proposal: "common/tool-proposal.schema.json",
     job_create_request: "public/job-create-request.schema.json",

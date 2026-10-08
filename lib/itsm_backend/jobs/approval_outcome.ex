@@ -12,7 +12,7 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
 
     succeeded  -> completed
     failed     -> failed
-    unresolved -> reconciliation_required
+    unresolved -> outcome_unknown
 
   An unresolved outcome is never automatically retried because the
   external side effect may already have occurred.
@@ -61,12 +61,45 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
     {:error, {:invalid_approval_outcome, {:invalid_payload, payload}}}
   end
 
+  @spec validate_identity(map(), String.t()) ::
+          :ok
+          | {:error, term()}
+  def validate_identity(
+        %{"approval_id" => actual},
+        expected
+      )
+      when is_binary(actual) and
+             is_binary(expected) do
+    if actual == expected do
+      :ok
+    else
+      {:error,
+       {
+         :approval_id_mismatch,
+         expected,
+         actual
+       }}
+    end
+  end
+
+  def validate_identity(
+        outcome,
+        expected
+      ) do
+    {:error,
+     {
+       :approval_id_mismatch,
+       expected,
+       Map.get(outcome, "approval_id")
+     }}
+  end
+
   @spec target_job_status(map()) :: String.t()
   def target_job_status(%{"execution_status" => "succeeded"}), do: "completed"
   def target_job_status(%{"execution_status" => "failed"}), do: "failed"
 
   def target_job_status(%{"execution_status" => "unresolved"}),
-    do: "reconciliation_required"
+    do: "outcome_unknown"
 
   @spec message(map()) :: String.t() | nil
   def message(%{"execution_status" => "succeeded"}), do: nil
@@ -132,7 +165,9 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
 
   defp optional_string(payload, key) do
     case fetch(payload, key) do
-      nil -> {:ok, nil}
+      nil ->
+        {:ok, nil}
+
       value when is_binary(value) ->
         value = String.trim(value)
         if value == "", do: {:ok, nil}, else: {:ok, value}

@@ -50,10 +50,10 @@ defmodule ItsmBackend.Chats do
     end
   end
 
-  def history(user, chat_id, limit \\ 100) do
+  def history(user, chat_id, limit \\ 100, version \\ 1) do
     with {:ok, chat} <- get_authorized(user, chat_id),
          {:ok, jobs} <- Jobs.list_by_conversation(chat["user_id"], chat_id, limit) do
-      {:ok, Enum.flat_map(jobs, &job_turns/1)}
+      {:ok, Enum.flat_map(jobs, &job_turns(&1, version))}
     end
   end
 
@@ -70,13 +70,13 @@ defmodule ItsmBackend.Chats do
     end
   end
 
-  defp job_turns(job) do
+  defp job_turns(job, version \\ 1) do
     user_turn = %{
       "role" => "user",
       "content" => job.message,
       "job_id" => job.id,
       "created_at" => encode_time(job.created_at),
-      "status" => job.status
+      "status" => ItsmBackend.Jobs.Lifecycle.wire_status(job.status, version)
     }
 
     case assistant_content(job) do
@@ -91,14 +91,15 @@ defmodule ItsmBackend.Chats do
             "content" => content,
             "job_id" => job.id,
             "created_at" => encode_time(job.completed_at || job.claimed_at || job.created_at),
-            "status" => job.status,
+            "status" => ItsmBackend.Jobs.Lifecycle.wire_status(job.status, version),
             "proposed_tool" => job.proposed_tool
           }
         ]
     end
   end
 
-  defp assistant_content(%{status: "failed", error: error}) when is_binary(error), do: error
+  defp assistant_content(%{status: status, error: error})
+       when status in ["failed", "denied", "outcome_unknown", "reconciliation_required"] and is_binary(error), do: error
 
   defp assistant_content(%{result: result}) when is_map(result) do
     Map.get(result, "answer") || Map.get(result, :answer)

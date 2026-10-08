@@ -36,7 +36,7 @@ defmodule ItsmBackend.JobsTest do
              )
 
     assert failed.status ==
-             "failed"
+             "outcome_unknown"
 
     assert failed.error ==
              recovery_error
@@ -64,7 +64,7 @@ defmodule ItsmBackend.JobsTest do
              )
 
     assert acknowledged.status ==
-             "failed"
+             "outcome_unknown"
 
     assert acknowledged.error ==
              recovery_error
@@ -76,7 +76,7 @@ defmodule ItsmBackend.JobsTest do
              Jobs.get(job.id)
 
     assert fetched.status ==
-             "failed"
+             "outcome_unknown"
 
     assert fetched.error ==
              recovery_error
@@ -117,7 +117,7 @@ defmodule ItsmBackend.JobsTest do
              )
 
     assert failed.status ==
-             "failed"
+             "outcome_unknown"
 
     stale_attempt =
       stored_processing.attempts + 1
@@ -149,7 +149,7 @@ defmodule ItsmBackend.JobsTest do
              Jobs.get(job.id)
 
     assert fetched.status ==
-             "failed"
+             "outcome_unknown"
 
     assert fetched.error ==
              "lease expired"

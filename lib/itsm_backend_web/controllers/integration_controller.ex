@@ -1,6 +1,10 @@
 defmodule ItsmBackendWeb.IntegrationController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  request_contract(:index, [])
+
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
 

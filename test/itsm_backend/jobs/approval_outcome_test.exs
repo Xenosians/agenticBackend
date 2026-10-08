@@ -35,7 +35,7 @@ defmodule ItsmBackend.Jobs.ApprovalOutcomeTest do
     assert ApprovalOutcome.message(outcome) == "tests failed"
   end
 
-  test "maps ambiguous execution to reconciliation_required" do
+  test "maps ambiguous execution to outcome_unknown" do
     assert {:ok, outcome} =
              ApprovalOutcome.normalize(%{
                "approval_id" => "a3",
@@ -47,14 +47,12 @@ defmodule ItsmBackend.Jobs.ApprovalOutcomeTest do
                "error" => nil
              })
 
-    assert ApprovalOutcome.target_job_status(outcome) == "reconciliation_required"
+    assert ApprovalOutcome.target_job_status(outcome) == "outcome_unknown"
     assert ApprovalOutcome.message(outcome) =~ "reconciliation"
   end
 
   test "rejects contradictory authority state" do
-    assert {:error,
-            {:invalid_approval_outcome,
-             {:authority_state_mismatch, _, _, _}}} =
+    assert {:error, {:invalid_approval_outcome, {:authority_state_mismatch, _, _, _}}} =
              ApprovalOutcome.normalize(%{
                "approval_id" => "a4",
                "protocol_status" => "processed",
@@ -64,5 +62,37 @@ defmodule ItsmBackend.Jobs.ApprovalOutcomeTest do
                "result" => nil,
                "error" => "bad"
              })
+  end
+
+  test "approval outcome is bound to the requested approval id" do
+    outcome = %{
+      "approval_id" => "approval-expected",
+      "protocol_status" => "processed",
+      "execution_status" => "succeeded",
+      "approval_status" => "approved",
+      "replayed" => false,
+      "result" => %{
+        "ok" => true,
+        "status" => "success"
+      },
+      "error" => nil
+    }
+
+    assert :ok =
+             ApprovalOutcome.validate_identity(
+               outcome,
+               "approval-expected"
+             )
+
+    assert {:error,
+            {
+              :approval_id_mismatch,
+              "approval-other",
+              "approval-expected"
+            }} =
+             ApprovalOutcome.validate_identity(
+               outcome,
+               "approval-other"
+             )
   end
 end

@@ -155,7 +155,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
     assert {:ok, recovered_job} =
              wait_for_status(
                stored_processing.id,
-               "failed",
+               "outcome_unknown",
                1_000
              )
 

@@ -13,6 +13,7 @@ defmodule ItsmBackend.Jobs.PublicContract do
   """
 
   alias ItsmBackend.Contracts
+  alias ItsmBackend.Jobs.Lifecycle
   alias ItsmBackend.Jobs.Job
 
   # ------------------------------------------------------------
@@ -93,14 +94,15 @@ defmodule ItsmBackend.Jobs.PublicContract do
   @spec build_job_response(Job.t()) ::
           {:ok, map()}
           | {:error, term()}
-  def build_job_response(%Job{} = job) do
+  def build_job_response(job, version \\ 1)
+  def build_job_response(%Job{} = job, version) when version in [1, 2] do
     payload = %{
       "job_id" => job.id,
       "user_id" => job.user_id,
       "conversation_id" => job.conversation_id,
       "chat_id" => job.conversation_id,
       "message" => job.message,
-      "status" => job.status,
+      "status" => Lifecycle.wire_status(job.status, version),
       "attempts" => job.attempts,
       "created_at" => encode_datetime(job.created_at),
       "claimed_at" => encode_datetime(job.claimed_at),
@@ -112,15 +114,17 @@ defmodule ItsmBackend.Jobs.PublicContract do
       "error" => job.error
     }
 
+    payload = Lifecycle.versioned(payload, version)
+
     with :ok <-
-           validate_job_response_envelope(payload),
+           validate_job_response_envelope(payload, version),
          :ok <-
            validate_proposed_tool(job.proposed_tool) do
       {:ok, payload}
     end
   end
 
-  def build_job_response(value) do
+  def build_job_response(value, _version) do
     {:error,
      {
        :invalid_job_response,
@@ -133,9 +137,9 @@ defmodule ItsmBackend.Jobs.PublicContract do
   # Public response validation
   # ------------------------------------------------------------
 
-  defp validate_job_response_envelope(payload) do
+  defp validate_job_response_envelope(payload, version) do
     case Contracts.validate(
-           :job_response,
+           if(version == 2, do: :job_response_v2, else: :job_response),
            payload
          ) do
       :ok ->

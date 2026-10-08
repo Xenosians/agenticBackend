@@ -190,7 +190,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
     assert {:ok, failed_job} =
              wait_for_status(
                dispatched_job_id,
-               "failed",
+               "outcome_unknown",
                3_000
              )
 
