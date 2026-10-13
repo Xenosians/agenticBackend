@@ -4,8 +4,9 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
   use ItsmBackendWeb.RequestContract
 
   # SRS18_REQUEST_CONTRACT_V1
-  request_contract :heartbeat,
+  request_contract(:heartbeat,
     required_body: ["attempt"]
+  )
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.RuntimeConfig

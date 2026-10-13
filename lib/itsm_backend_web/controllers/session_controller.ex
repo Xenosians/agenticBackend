@@ -4,8 +4,8 @@ defmodule ItsmBackendWeb.SessionController do
   use ItsmBackendWeb.RequestContract
 
   # SRS18_REQUEST_CONTRACT_V1
-  request_contract :index, []
-  request_contract :revoke, []
+  request_contract(:index, [])
+  request_contract(:revoke, [])
 
   alias ItsmBackend.Auth
   alias ItsmBackendWeb.AuthRequest

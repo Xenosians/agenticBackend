@@ -365,8 +365,8 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -399,8 +399,8 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -414,7 +414,8 @@ defmodule ItsmBackend.Jobs do
          } = job,
          failure_status,
          attrs
-       ) when failure_status in ["failed", "denied", "outcome_unknown"] do
+       )
+       when failure_status in ["failed", "denied", "outcome_unknown"] do
     error =
       Map.get(
         attrs,
@@ -440,8 +441,8 @@ defmodule ItsmBackend.Jobs do
              failure_status
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -460,6 +461,17 @@ defmodule ItsmBackend.Jobs do
        job.status,
        completion_status
      }}
+  end
+
+  defp resolve_completion_write(%Job{} = stored, _desired), do: {:ok, stored, :applied}
+
+  defp resolve_completion_write(nil, desired) do
+    with {:ok, current} <- get(desired.id),
+         :ok <- verify_attempt(current, desired.attempts) do
+      if current.status in @terminal_statuses or current.status == "waiting_approval",
+        do: {:ok, current, :duplicate},
+        else: {:error, {:invalid_completion_state, current.status, desired.status}}
+    end
   end
 
   # ------------------------------------------------------------

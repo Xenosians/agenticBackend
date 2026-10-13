@@ -297,7 +297,8 @@ defmodule ItsmBackend.Jobs.Job do
        do: true
 
   defp allowed_transition?(current, next)
-       when current in ["processing", "waiting_approval"] and next in ["denied", "outcome_unknown"],
+       when current in ["processing", "waiting_approval"] and
+              next in ["denied", "outcome_unknown"],
        do: true
 
   defp allowed_transition?(

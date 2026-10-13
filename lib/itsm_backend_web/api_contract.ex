@@ -122,9 +122,14 @@ defmodule ItsmBackendWeb.ApiContract do
     end
 
     case controller.__request_contract__(action) do
-      value when is_map(value) -> value
-      nil -> raise "Missing request contract for #{inspect(controller)}.#{action}/2"
-      other -> raise "Invalid request contract for #{inspect(controller)}.#{action}/2: #{inspect(other)}"
+      value when is_map(value) ->
+        value
+
+      nil ->
+        raise "Missing request contract for #{inspect(controller)}.#{action}/2"
+
+      other ->
+        raise "Invalid request contract for #{inspect(controller)}.#{action}/2: #{inspect(other)}"
     end
   end
 
@@ -178,7 +183,10 @@ defmodule ItsmBackendWeb.ApiContract do
   end
 
   defp normalize_method(method) when is_binary(method), do: String.upcase(method)
-  defp normalize_method(method) when is_atom(method), do: method |> Atom.to_string() |> String.upcase()
+
+  defp normalize_method(method) when is_atom(method),
+    do: method |> Atom.to_string() |> String.upcase()
+
   defp normalize_method(method), do: method |> to_string() |> String.upcase()
 
   defp controller_name(controller) when is_atom(controller) do
@@ -268,8 +276,19 @@ defmodule ItsmBackendWeb.ApiContract do
       raise "Invalid permission #{inspect(contract.permission)} for #{contract.path}"
     end
 
-    validate_argument_partition!(contract.required_body_params, contract.optional_body_params, "body", contract.path)
-    validate_argument_partition!(contract.required_query_params, contract.optional_query_params, "query", contract.path)
+    validate_argument_partition!(
+      contract.required_body_params,
+      contract.optional_body_params,
+      "body",
+      contract.path
+    )
+
+    validate_argument_partition!(
+      contract.required_query_params,
+      contract.optional_query_params,
+      "query",
+      contract.path
+    )
 
     :ok
   end

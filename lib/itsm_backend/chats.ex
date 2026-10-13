@@ -99,7 +99,9 @@ defmodule ItsmBackend.Chats do
   end
 
   defp assistant_content(%{status: status, error: error})
-       when status in ["failed", "denied", "outcome_unknown", "reconciliation_required"] and is_binary(error), do: error
+       when status in ["failed", "denied", "outcome_unknown", "reconciliation_required"] and
+              is_binary(error),
+       do: error
 
   defp assistant_content(%{result: result}) when is_map(result) do
     Map.get(result, "answer") || Map.get(result, :answer)

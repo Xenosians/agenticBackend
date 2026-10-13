@@ -95,6 +95,7 @@ defmodule ItsmBackend.Jobs.PublicContract do
           {:ok, map()}
           | {:error, term()}
   def build_job_response(job, version \\ 1)
+
   def build_job_response(%Job{} = job, version) when version in [1, 2] do
     payload = %{
       "job_id" => job.id,

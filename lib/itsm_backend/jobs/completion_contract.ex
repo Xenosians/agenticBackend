@@ -63,7 +63,8 @@ defmodule ItsmBackend.Jobs.CompletionContract do
         status,
         disposition,
         version \\ 1
-      ) when version in [1, 2] do
+      )
+      when version in [1, 2] do
     with {:ok, acknowledgement} <-
            acknowledgement_value(disposition) do
       payload = %{
@@ -82,7 +83,10 @@ defmodule ItsmBackend.Jobs.CompletionContract do
 
   defp validate_completion_envelope(payload) do
     case Contracts.validate(
-           if(Map.get(payload, "contract_version") == 2, do: :ai_job_completion_v2, else: :ai_job_completion),
+           if(Map.get(payload, "contract_version") == 2,
+             do: :ai_job_completion_v2,
+             else: :ai_job_completion
+           ),
            payload
          ) do
       :ok ->

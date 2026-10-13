@@ -10,9 +10,11 @@ defmodule ItsmBackend.Jobs.LifecycleV2Test do
       assert Job.terminal?(terminal)
       assert terminal.completed_at != nil
       assert terminal.lease_expires_at == nil
+
       for next <- ["pending", "processing", "waiting_approval", "completed"] do
         assert {:error, _} = Job.transition(terminal, next)
       end
+
       assert {:error, _} = Job.claim(terminal, 60)
       assert {:ok, v2} = PublicContract.build_job_response(terminal, 2)
       assert v2["contract_version"] == 2
@@ -25,14 +27,24 @@ defmodule ItsmBackend.Jobs.LifecycleV2Test do
 
   test "old persisted reconciliation rows have a v2 projection" do
     {:ok, job} = Job.new(%{user_id: "v2", message: "request"})
-    assert {:ok, response} = PublicContract.build_job_response(%{job | status: "reconciliation_required"}, 2)
+
+    assert {:ok, response} =
+             PublicContract.build_job_response(%{job | status: "reconciliation_required"}, 2)
+
     assert response["status"] == "outcome_unknown"
   end
 
   test "new callback states require v2 and explicit error, never success data" do
     for status <- ["denied", "outcome_unknown"] do
-      payload = %{"contract_version" => 2, "attempt" => 1, "status" => status,
-                  "selected_agent" => nil, "proposed_tool" => nil, "error" => "Decision detail"}
+      payload = %{
+        "contract_version" => 2,
+        "attempt" => 1,
+        "status" => status,
+        "selected_agent" => nil,
+        "proposed_tool" => nil,
+        "error" => "Decision detail"
+      }
+
       assert {:ok, ^payload} = CompletionContract.validate(payload)
       assert {:error, _} = CompletionContract.validate(Map.delete(payload, "contract_version"))
       assert {:error, _} = CompletionContract.validate(Map.put(payload, "contract_version", 3))

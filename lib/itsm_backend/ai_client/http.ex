@@ -18,6 +18,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.post(
            "#{config.base_url}/v1/agent/run",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
            json: %{
              user_id: user_id,
              message: message
@@ -85,6 +86,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.post(
            "#{config.base_url}/v1/jobs/execute",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
            json: payload,
            receive_timeout: config.execute_timeout_ms
          ) do

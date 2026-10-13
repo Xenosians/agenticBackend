@@ -4,7 +4,7 @@ defmodule ItsmBackendWeb.ProvisionedAccountController do
   use ItsmBackendWeb.RequestContract
 
   # SRS18_REQUEST_CONTRACT_V1
-  request_contract :create,
+  request_contract(:create,
     required_body: [
       "directory_user_id",
       "email",
@@ -13,6 +13,7 @@ defmodule ItsmBackendWeb.ProvisionedAccountController do
       "temporary_password"
     ],
     optional_body: ["department", "role"]
+  )
 
   alias ItsmBackend.ProvisionedAccounts
   alias ItsmBackend.RuntimeConfig

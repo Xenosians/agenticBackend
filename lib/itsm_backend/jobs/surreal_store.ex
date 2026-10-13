@@ -574,6 +574,33 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     end
   end
 
+  @doc "Atomically stores completion only while the original attempt is processing."
+  def complete_if_processing(%Job{} = job) do
+    statement = """
+    UPDATE type::record($table, $id) CONTENT $data
+    WHERE status = "processing" AND attempts = $attempts
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => job.id,
+      "data" => serialize(job),
+      "attempts" => job.attempts
+    }
+
+    with {:ok, response} <- Surreal.query(statement, params),
+         {:ok, result} <- extract_result(response) do
+      case result do
+        nil -> {:ok, nil}
+        [] -> {:ok, nil}
+        [record] -> deserialize(record)
+        record when is_map(record) -> deserialize(record)
+        _ -> {:error, :invalid_completion_store_response}
+      end
+    end
+  end
+
   # ------------------------------------------------------------
   # Serialization
   # ------------------------------------------------------------
