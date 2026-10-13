@@ -1,6 +1,14 @@
 defmodule ItsmBackendWeb.JobCompletionController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract(:complete,
+    required_body: ["attempt", "status", "selected_agent", "proposed_tool"],
+    optional_body: ["result", "error", "contract_version"]
+  )
+
   require Logger
 
   alias ItsmBackend.Jobs
@@ -167,7 +175,8 @@ defmodule ItsmBackendWeb.JobCompletionController do
     case CompletionContract.build_ack(
            job_id,
            status,
-           disposition
+           disposition,
+           Map.get(conn.body_params, "contract_version", 1)
          ) do
       {:ok, acknowledgement} ->
         conn

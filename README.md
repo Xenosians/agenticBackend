@@ -627,6 +627,14 @@ The single-inflight worker is currently a deliberate reliability choice for loca
 
 ## Design summary
 
+Tests use a separate SurrealDB database: `SURREALDB_DATABASE` plus `_test`,
+or an explicit `SURREALDB_TEST_DATABASE`. The test database must differ from
+the development/production database. Test setup initializes only the schema
+in `priv/surreal/schema.surql`; it never copies production records. This keeps
+durable test jobs out of the development queue. The configured database account
+needs permission to create the test database and its schema. Run `direnv exec .
+mix precommit` from WSL with the existing backend environment loaded.
+
 ```text
 Frontend owns interaction.
 Phoenix owns durable application truth.

@@ -149,7 +149,7 @@ defmodule ItsmBackendWeb.JobHeartbeatControllerTest do
              )
 
     assert cleaned_job.status ==
-             "failed"
+             "outcome_unknown"
   end
 
   defp post_heartbeat(

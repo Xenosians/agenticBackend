@@ -245,7 +245,7 @@ defmodule ItsmBackend.Jobs.SurrealStoreTest do
              )
 
     assert failed.status ==
-             "failed"
+             "outcome_unknown"
 
     assert failed.attempts ==
              stored_processing.attempts
@@ -263,7 +263,7 @@ defmodule ItsmBackend.Jobs.SurrealStoreTest do
              SurrealStore.get(job.id)
 
     assert fetched.status ==
-             "failed"
+             "outcome_unknown"
 
     assert fetched.error ==
              error

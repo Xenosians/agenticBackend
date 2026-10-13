@@ -8,21 +8,24 @@ defmodule ItsmBackend.ContractsRuntimeTest do
              :ai_job_accepted,
              :ai_job_completion,
              :ai_job_completion_ack,
+             :ai_job_completion_ack_v2,
+             :ai_job_completion_v2,
              :ai_job_execute_request,
              :error,
              :job_create_request,
              :job_create_response,
              :job_response,
+             :job_response_v2,
              :tool_proposal
            ]
   end
 
-  test "validates a known contract" do
+  test "validates the authenticated chat-owned public create contract" do
     assert :ok =
              Contracts.validate(
                :job_create_request,
                %{
-                 "user_id" => "jdoe",
+                 "chat_id" => "chat-123",
                  "message" => "hello"
                }
              )

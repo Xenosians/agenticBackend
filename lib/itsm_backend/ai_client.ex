@@ -52,6 +52,10 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  @callback integrations() ::
+              {:ok, map()}
+              | {:error, term()}
+
   @spec dispatch_job(
           module(),
           String.t(),

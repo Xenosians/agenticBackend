@@ -13,6 +13,49 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   @table "job"
 
   # ------------------------------------------------------------
+  # Pending work discovery
+  # ------------------------------------------------------------
+
+  @spec pending?() ::
+          {:ok, boolean()}
+          | {:error, term()}
+
+  def pending? do
+    statement = """
+    SELECT id
+    FROM job
+    WHERE status = "pending"
+    LIMIT 1;
+    """
+
+    with {:ok, response} <-
+           Surreal.query(statement),
+         {:ok, result} <-
+           extract_result(response) do
+      case result do
+        nil ->
+          {:ok, false}
+
+        [] ->
+          {:ok, false}
+
+        [_ | _] ->
+          {:ok, true}
+
+        record when is_map(record) ->
+          {:ok, true}
+
+        other ->
+          {:error,
+           {
+             :unexpected_pending_probe,
+             other
+           }}
+      end
+    end
+  end
+
+  # ------------------------------------------------------------
   # Queue claiming
   # ------------------------------------------------------------
 
@@ -299,12 +342,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     with {:ok, failed_job} <-
            Job.transition(
              failed_job,
-             "failed"
+             "outcome_unknown"
            ) do
       statement = """
       UPDATE type::record($table, $id)
       SET
-        status = "failed",
+        status = "outcome_unknown",
         error = $error,
         completed_at = $completed_at,
         lease_expires_at = $cleared_lease
@@ -528,6 +571,33 @@ defmodule ItsmBackend.Jobs.SurrealStore do
          {:ok, stored_job} <-
            deserialize(record) do
       {:ok, stored_job}
+    end
+  end
+
+  @doc "Atomically stores completion only while the original attempt is processing."
+  def complete_if_processing(%Job{} = job) do
+    statement = """
+    UPDATE type::record($table, $id) CONTENT $data
+    WHERE status = "processing" AND attempts = $attempts
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => job.id,
+      "data" => serialize(job),
+      "attempts" => job.attempts
+    }
+
+    with {:ok, response} <- Surreal.query(statement, params),
+         {:ok, result} <- extract_result(response) do
+      case result do
+        nil -> {:ok, nil}
+        [] -> {:ok, nil}
+        [record] -> deserialize(record)
+        record when is_map(record) -> deserialize(record)
+        _ -> {:error, :invalid_completion_store_response}
+      end
     end
   end
 

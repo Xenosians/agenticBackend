@@ -1,8 +1,24 @@
 defmodule ItsmBackendWeb.ChatController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract(:create,
+    optional_body: ["title"]
+  )
+
+  request_contract(:index, [])
+  request_contract(:show, [])
+
+  request_contract(:history,
+    optional_query: ["limit"]
+  )
+
   alias ItsmBackend.Chats
   alias ItsmBackendWeb.AuthRequest
+
+  request_contract(:delete, [])
 
   def create(conn, params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
@@ -58,12 +74,45 @@ defmodule ItsmBackendWeb.ChatController do
     end
   end
 
+  def delete(conn, %{"id" => chat_id}) do
+    case AuthRequest.require_authenticated(conn, csrf: true) do
+      {:ok, conn, ctx} ->
+        case Chats.archive(ctx.user, chat_id) do
+          {:ok, _chat} ->
+            json(conn, %{
+              chat_id: chat_id,
+              deleted: true
+            })
+
+          {:error, :not_found} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: "chat_not_found"})
+
+          {:error, :forbidden} ->
+            conn
+            |> put_status(:forbidden)
+            |> json(%{error: "forbidden"})
+
+          {:error, _} ->
+            conn
+            |> put_status(:internal_server_error)
+            |> json(%{error: "chat_delete_failed"})
+        end
+
+      {:error, conn} ->
+        conn
+    end
+  end
+
   def history(conn, %{"id" => chat_id} = params) do
     case AuthRequest.require_authenticated(conn) do
       {:ok, conn, ctx} ->
         limit = parse_limit(Map.get(params, "limit"))
 
-        case Chats.history(ctx.user, chat_id, limit) do
+        version = if Enum.at(conn.path_info, 1) == "v2", do: 2, else: 1
+
+        case Chats.history(ctx.user, chat_id, limit, version) do
           {:ok, messages} ->
             json(conn, %{chat_id: chat_id, messages: messages})
 

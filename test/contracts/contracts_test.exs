@@ -63,22 +63,23 @@ defmodule ItsmBackend.ContractsTest do
   # Public job creation request
   # ------------------------------------------------------------
 
-  test "job-create-request accepts the current public payload" do
+  test "job-create-request accepts the current authenticated chat payload" do
     assert_valid(
       :job_create_request,
       %{
-        "user_id" => "jdoe",
+        "chat_id" => "chat-123",
         "message" => "Is my account locked?"
       }
     )
   end
 
-  test "job-create-request accepts optional conversation_id" do
-    assert_valid(
+  test "job-create-request rejects browser-supplied identity fields" do
+    refute_valid(
       :job_create_request,
       %{
-        "user_id" => "jdoe",
-        "conversation_id" => "conversation-1",
+        "chat_id" => "chat-123",
+        "user_id" => "forged-user",
+        "conversation_id" => "forged-conversation",
         "message" => "Continue the previous request."
       }
     )
@@ -88,7 +89,7 @@ defmodule ItsmBackend.ContractsTest do
     refute_valid(
       :job_create_request,
       %{
-        "user_id" => "jdoe"
+        "chat_id" => "chat-123"
       }
     )
   end
@@ -97,7 +98,7 @@ defmodule ItsmBackend.ContractsTest do
     refute_valid(
       :job_create_request,
       %{
-        "user_id" => "",
+        "chat_id" => "",
         "message" => "hello"
       }
     )
@@ -107,7 +108,7 @@ defmodule ItsmBackend.ContractsTest do
     refute_valid(
       :job_create_request,
       %{
-        "user_id" => "jdoe",
+        "chat_id" => "chat-123",
         "message" => "hello",
         "unexpected" => true
       }
@@ -167,6 +168,7 @@ defmodule ItsmBackend.ContractsTest do
         "job_id" => "job-123",
         "user_id" => "jdoe",
         "conversation_id" => "conversation-1",
+        "chat_id" => "conversation-1",
         "message" => "Check account.",
         "status" => "completed",
         "attempts" => 1,
@@ -570,6 +572,7 @@ defmodule ItsmBackend.ContractsTest do
       "job_id" => "job-123",
       "user_id" => "jdoe",
       "conversation_id" => nil,
+      "chat_id" => nil,
       "message" => "hello",
       "status" => "pending",
       "attempts" => 0,

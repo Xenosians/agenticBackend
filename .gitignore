@@ -45,3 +45,5 @@ itsm_backend-*.tar
 # Local backup / editor artifacts
 *.bak
 *.bak-*
+
+.runtime/

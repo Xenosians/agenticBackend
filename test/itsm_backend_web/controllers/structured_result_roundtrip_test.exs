@@ -4,6 +4,7 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackendWeb.AuthTestSupport
 
   @internal_token "structured-result-roundtrip-token"
 
@@ -32,13 +33,23 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
 
   test "structured tool result survives completion persistence and public response",
        %{conn: conn} do
+    identity =
+      AuthTestSupport.authenticated_identity!()
+
     # ----------------------------------------------------------
     # Create durable job
     # ----------------------------------------------------------
 
     assert {:ok, created_job} =
              Jobs.create(%{
-               user_id: "structured-result-user",
+               user_id:
+                 identity.user[
+                   "user_id"
+                 ],
+               conversation_id:
+                 identity.chat[
+                   "chat_id"
+                 ],
                message: "Check workspace services."
              })
 
@@ -169,6 +180,7 @@ defmodule ItsmBackendWeb.StructuredResultRoundtripTest do
 
     public_conn =
       build_conn()
+      |> AuthTestSupport.bearer_conn(identity.auth.raw_token)
       |> get(~p"/api/v1/jobs/#{processing_job.id}")
 
     response =

@@ -19,6 +19,9 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/auth/resend-verification", AuthController, :resend_verification
     post "/v1/auth/login", AuthController, :login
     get "/v1/auth/me", AuthController, :me
+    get "/v1/extensions", ExtensionController, :index
+    post "/v1/extensions", ExtensionController, :command
+    get "/v1/integrations", IntegrationController, :index
     post "/v1/auth/logout", AuthController, :logout
     post "/v1/auth/forgot-password", AuthController, :forgot_password
     post "/v1/auth/reset-password", AuthController, :reset_password
@@ -30,6 +33,7 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/chats", ChatController, :index
     get "/v1/chats/:id", ChatController, :show
     get "/v1/chats/:id/history", ChatController, :history
+    delete "/v1/chats/:id", ChatController, :delete
 
     post "/v1/agent/run",
          AgentController,
@@ -46,6 +50,10 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/jobs/:id/approve",
          JobController,
          :approve
+
+    get "/v2/chats/:id/history", ChatController, :history
+    get "/v2/jobs/:id", JobController, :show
+    post "/v2/jobs/:id/approve", JobController, :approve
 
     # ----------------------------------------------------------
     # Internal AI -> Phoenix durable-job protocol

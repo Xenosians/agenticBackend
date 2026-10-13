@@ -10,13 +10,19 @@ defmodule ItsmBackend.Jobs.Job do
     "pending",
     "processing",
     "waiting_approval",
+    "reconciliation_required",
+    "denied",
+    "outcome_unknown",
     "completed",
     "failed"
   ]
 
   @terminal_statuses [
     "completed",
-    "failed"
+    "failed",
+    "reconciliation_required",
+    "denied",
+    "outcome_unknown"
   ]
 
   @enforce_keys [
@@ -282,6 +288,17 @@ defmodule ItsmBackend.Jobs.Job do
          "waiting_approval",
          "failed"
        ),
+       do: true
+
+  defp allowed_transition?(
+         "waiting_approval",
+         "reconciliation_required"
+       ),
+       do: true
+
+  defp allowed_transition?(current, next)
+       when current in ["processing", "waiting_approval"] and
+              next in ["denied", "outcome_unknown"],
        do: true
 
   defp allowed_transition?(

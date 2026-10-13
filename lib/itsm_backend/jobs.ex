@@ -7,14 +7,19 @@ defmodule ItsmBackend.Jobs do
   alias ItsmBackend.Jobs.SurrealStore
 
   @completion_statuses [
+    "denied",
+    "outcome_unknown",
     "completed",
     "failed",
     "waiting_approval"
   ]
 
   @terminal_statuses [
+    "denied",
+    "outcome_unknown",
     "completed",
-    "failed"
+    "failed",
+    "reconciliation_required"
   ]
 
   # ------------------------------------------------------------
@@ -67,6 +72,18 @@ defmodule ItsmBackend.Jobs do
           | {:error, term()}
   def update(%Job{} = job) do
     SurrealStore.update(job)
+  end
+
+  # ------------------------------------------------------------
+  # Pending work discovery
+  # ------------------------------------------------------------
+
+  @spec pending?() ::
+          {:ok, boolean()}
+          | {:error, term()}
+
+  def pending? do
+    SurrealStore.pending?()
   end
 
   # ------------------------------------------------------------
@@ -348,8 +365,8 @@ defmodule ItsmBackend.Jobs do
              "completed"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -382,8 +399,8 @@ defmodule ItsmBackend.Jobs do
              "waiting_approval"
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -395,9 +412,10 @@ defmodule ItsmBackend.Jobs do
          %Job{
            status: "processing"
          } = job,
-         "failed",
+         failure_status,
          attrs
-       ) do
+       )
+       when failure_status in ["failed", "denied", "outcome_unknown"] do
     error =
       Map.get(
         attrs,
@@ -420,11 +438,11 @@ defmodule ItsmBackend.Jobs do
     with {:ok, transitioned_job} <-
            Job.transition(
              job,
-             "failed"
+             failure_status
            ),
          {:ok, stored_job} <-
-           update(transitioned_job) do
-      {:ok, stored_job, :applied}
+           SurrealStore.complete_if_processing(transitioned_job) do
+      resolve_completion_write(stored_job, transitioned_job)
     end
   end
 
@@ -443,6 +461,17 @@ defmodule ItsmBackend.Jobs do
        job.status,
        completion_status
      }}
+  end
+
+  defp resolve_completion_write(%Job{} = stored, _desired), do: {:ok, stored, :applied}
+
+  defp resolve_completion_write(nil, desired) do
+    with {:ok, current} <- get(desired.id),
+         :ok <- verify_attempt(current, desired.attempts) do
+      if current.status in @terminal_statuses or current.status == "waiting_approval",
+        do: {:ok, current, :duplicate},
+        else: {:error, {:invalid_completion_state, current.status, desired.status}}
+    end
   end
 
   # ------------------------------------------------------------

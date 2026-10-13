@@ -20,6 +20,7 @@
       "enum": [
         "completed",
         "waiting_approval",
+        "reconciliation_required",
         "failed"
       ],
       "description": "Durable Phoenix job status after completion handling."

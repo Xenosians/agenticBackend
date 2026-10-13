@@ -18,6 +18,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.post(
            "#{config.base_url}/v1/agent/run",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
            json: %{
              user_id: user_id,
              message: message
@@ -85,6 +86,7 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.post(
            "#{config.base_url}/v1/jobs/execute",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
            json: payload,
            receive_timeout: config.execute_timeout_ms
          ) do
@@ -161,6 +163,29 @@ defmodule ItsmBackend.AIClient.HTTP do
            :request_failed,
            reason
          }}
+    end
+  end
+
+  # ------------------------------------------------------------
+  # Integration status
+  # ------------------------------------------------------------
+
+  @impl true
+  def integrations do
+    config = RuntimeConfig.ai_service!()
+
+    case Req.get(
+           "#{config.base_url}/v1/integrations",
+           receive_timeout: config.health_timeout_ms
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        {:ok, body}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:ai_service_error, status, body}}
+
+      {:error, reason} ->
+        {:error, {:request_failed, reason}}
     end
   end
 

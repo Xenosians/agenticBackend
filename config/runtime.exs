@@ -280,11 +280,27 @@ end
 # SurrealDB
 # ------------------------------------------------------------
 
+surreal_database = required_env.("SURREALDB_DATABASE") |> String.trim()
+
+surreal_database =
+  if config_env() == :test do
+    test_database =
+      System.get_env("SURREALDB_TEST_DATABASE", surreal_database <> "_test") |> String.trim()
+
+    if String.trim(test_database) == "" or test_database == surreal_database do
+      raise "SURREALDB_TEST_DATABASE must be non-empty and different from SURREALDB_DATABASE"
+    end
+
+    test_database
+  else
+    surreal_database
+  end
+
 config :itsm_backend,
        :surrealdb,
        url: required_env.("SURREALDB_URL"),
        namespace: required_env.("SURREALDB_NAMESPACE"),
-       database: required_env.("SURREALDB_DATABASE"),
+       database: surreal_database,
        username: required_env.("SURREALDB_USERNAME"),
        password: required_env.("SURREALDB_PASSWORD")
 

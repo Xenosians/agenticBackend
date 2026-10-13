@@ -51,6 +51,28 @@ defmodule ItsmBackend.Chats.SurrealStore do
     end
   end
 
+  def archive(chat_id, now) do
+    statement = """
+    UPDATE ONLY type::record($table, $id)
+    SET archived_at = $now,
+        updated_at = $now
+    RETURN AFTER;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(
+             statement,
+             %{
+               "table" => @table,
+               "id" => chat_id,
+               "now" => now
+             }
+           ),
+         {:ok, record} <- single_or_nil(results) do
+      {:ok, record}
+    end
+  end
+
   defp single_or_nil(results) do
     with {:ok, result} <- rows(results) do
       case result do

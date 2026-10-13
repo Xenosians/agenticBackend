@@ -1,16 +1,30 @@
 defmodule ItsmBackendWeb.JobController do
   use ItsmBackendWeb, :controller
 
+  use ItsmBackendWeb.RequestContract
+
+  # SRS18_REQUEST_CONTRACT_V1
+  request_contract(:create,
+    required_body: ["chat_id", "message"]
+  )
+
+  request_contract(:show, [])
+  request_contract(:approve, [])
+
   require Logger
 
   alias ItsmBackend.Auth.Authorization
   alias ItsmBackend.Chats
   alias ItsmBackend.Jobs
+  alias ItsmBackend.Jobs.ApprovalOutcome
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
   alias ItsmBackendWeb.PublicError
+
+  defp wire_version(%{path_info: ["api", "v2" | _]}), do: 2
+  defp wire_version(_conn), do: 1
 
   def create(conn, _params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
@@ -65,7 +79,7 @@ defmodule ItsmBackendWeb.JobController do
   defp show_authenticated(conn, user, job_id) do
     with {:ok, job} <- Jobs.get(job_id),
          true <- Authorization.owns_resource?(user, job.user_id) || {:error, :forbidden},
-         {:ok, response} <- PublicContract.build_job_response(job) do
+         {:ok, response} <- PublicContract.build_job_response(job, wire_version(conn)) do
       json(conn, response)
     else
       {:error, :not_found} ->
@@ -96,40 +110,64 @@ defmodule ItsmBackendWeb.JobController do
 
   defp approve_authenticated(conn, user, job_id) do
     with {:ok, job} <- Jobs.get(job_id),
-         true <- Authorization.owns_resource?(user, job.user_id) || {:error, :forbidden},
-         {:ok, approval_id} <- approval_id(job),
-         {:ok, approval_result} <- execute_approval(approval_id),
-         {:ok, completed_job} <- complete_approved_job(job, approval_result),
-         {:ok, response} <- PublicContract.build_job_response(completed_job) do
-      json(conn, response)
+         true <-
+           Authorization.owns_resource?(
+             user,
+             job.user_id
+           ) ||
+             {:error, :forbidden},
+         {:ok, approval_id} <-
+           approval_id(job),
+         {:ok, resolved_job} <-
+           resolve_approval(
+             job,
+             approval_id
+           ),
+         {:ok, response} <-
+           PublicContract.build_job_response(resolved_job, wire_version(conn)) do
+      json(
+        conn,
+        response
+      )
     else
       {:error, :not_found} ->
-        conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
+        conn
+        |> put_status(:not_found)
+        |> json(%{
+          error: "job_not_found"
+        })
 
       {:error, :forbidden} ->
-        conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+        conn
+        |> put_status(:forbidden)
+        |> json(%{
+          error: "forbidden"
+        })
 
-      {:error, {:job_not_waiting_approval, status}} ->
+      {:error,
+       {
+         :job_not_waiting_approval,
+         status
+       }} ->
         conn
         |> put_status(:conflict)
-        |> json(%{error: "job_not_waiting_approval", status: status})
+        |> json(%{
+          error: "job_not_waiting_approval",
+          status: status
+        })
 
       {:error, :approval_id_missing} ->
-        conn |> put_status(:conflict) |> json(%{error: "approval_id_missing"})
-
-      {:error, {:approval_service_failed, reason}} ->
-        Logger.error("approval service failed: #{inspect(reason)}")
-
-        PublicError.render(
-          conn,
-          :bad_gateway,
-          "approval_service_failed",
-          "The approved action could not be executed by the AI service.",
-          retryable: true
-        )
+        conn
+        |> put_status(:conflict)
+        |> json(%{
+          error: "approval_id_missing"
+        })
 
       {:error, reason} ->
-        Logger.error("job approval failed: #{inspect(reason)}")
+        Logger.error(
+          "job approval failed: " <>
+            inspect(reason)
+        )
 
         PublicError.render(
           conn,
@@ -140,37 +178,287 @@ defmodule ItsmBackendWeb.JobController do
     end
   end
 
-  defp approval_id(%Job{status: "waiting_approval", proposed_tool: proposed_tool})
+  defp approval_id(%Job{
+         status: "waiting_approval",
+         proposed_tool: proposed_tool
+       })
        when is_map(proposed_tool) do
-    value = Map.get(proposed_tool, "approval_id") || Map.get(proposed_tool, :approval_id)
+    value =
+      Map.get(
+        proposed_tool,
+        "approval_id"
+      ) ||
+        Map.get(
+          proposed_tool,
+          :approval_id
+        )
 
-    if is_binary(value) and String.trim(value) != "",
-      do: {:ok, String.trim(value)},
-      else: {:error, :approval_id_missing}
-  end
-
-  defp approval_id(%Job{status: "waiting_approval"}), do: {:error, :approval_id_missing}
-  defp approval_id(%Job{status: status}), do: {:error, {:job_not_waiting_approval, status}}
-
-  defp execute_approval(approval_id) do
-    case RuntimeConfig.ai_client!().approve(approval_id) do
-      {:ok, result} when is_map(result) -> {:ok, result}
-      {:ok, result} -> {:error, {:approval_service_failed, {:invalid_approval_result, result}}}
-      {:error, reason} -> {:error, {:approval_service_failed, reason}}
+    if is_binary(value) and
+         String.trim(value) != "" do
+      {:ok, String.trim(value)}
+    else
+      {:error, :approval_id_missing}
     end
   end
 
-  defp complete_approved_job(%Job{status: "waiting_approval"} = job, approval_result)
-       when is_map(approval_result) do
-    previous_result = if is_map(job.result), do: job.result, else: %{}
+  defp approval_id(%Job{
+         status: "waiting_approval"
+       }),
+       do: {:error, :approval_id_missing}
 
-    completed_result =
+  defp approval_id(%Job{
+         status: status
+       }),
+       do:
+         {:error,
+          {
+            :job_not_waiting_approval,
+            status
+          }}
+
+  defp resolve_approval(
+         %Job{
+           status: "waiting_approval"
+         } = job,
+         approval_id
+       ) do
+    case execute_approval(approval_id) do
+      {:ok, approval_result} ->
+        resolve_authoritative_approval(
+          job,
+          approval_id,
+          approval_result
+        )
+
+      {:error,
+       {
+         :approval_service_failed,
+         reason
+       }} ->
+        reconcile_approval(
+          job,
+          approval_id,
+          {
+            :approval_service_failed,
+            reason
+          }
+        )
+    end
+  end
+
+  defp resolve_approval(
+         %Job{
+           status: status
+         },
+         _approval_id
+       ) do
+    {:error,
+     {
+       :job_not_waiting_approval,
+       status
+     }}
+  end
+
+  defp resolve_authoritative_approval(
+         job,
+         approval_id,
+         approval_result
+       ) do
+    with {:ok, approval_outcome} <-
+           ApprovalOutcome.normalize(approval_result),
+         :ok <-
+           ApprovalOutcome.validate_identity(
+             approval_outcome,
+             approval_id
+           ) do
+      complete_approved_job(
+        job,
+        approval_outcome
+      )
+    else
+      {:error, reason} ->
+        reconcile_approval(
+          job,
+          approval_id,
+          reason
+        )
+    end
+  end
+
+  defp execute_approval(approval_id) do
+    case RuntimeConfig.ai_client!().approve(approval_id) do
+      {:ok, result}
+      when is_map(result) ->
+        {:ok, result}
+
+      {:ok, result} ->
+        {:error,
+         {
+           :approval_service_failed,
+           {
+             :invalid_approval_result,
+             result
+           }
+         }}
+
+      {:error, reason} ->
+        {:error,
+         {
+           :approval_service_failed,
+           reason
+         }}
+    end
+  end
+
+  defp reconcile_approval(
+         %Job{
+           status: "waiting_approval"
+         } = job,
+         approval_id,
+         reason
+       ) do
+    Logger.warning(
+      "approval outcome requires reconciliation " <>
+        "job_id=#{job.id} " <>
+        "approval_id=#{approval_id} " <>
+        "reason=#{inspect(reason)}"
+    )
+
+    message =
+      "The approved action has an unresolved execution outcome. " <>
+        "Automatic retry is disabled; trusted reconciliation is required."
+
+    previous_result =
+      if is_map(job.result) do
+        job.result
+      else
+        %{}
+      end
+
+    reconciliation = %{
+      "approval_id" => approval_id,
+      "status" => "outcome_unknown",
+      "reason_code" => approval_reconciliation_code(reason),
+      "automatic_retry" => false
+    }
+
+    stored_result =
       previous_result
-      |> Map.put("approval_execution", approval_result)
-      |> Map.put("answer", approval_answer(approval_result))
+      |> Map.put(
+        "approval_reconciliation",
+        reconciliation
+      )
+      |> Map.put(
+        "answer",
+        message
+      )
+
+    job =
+      job
+      |> Job.put_result(stored_result)
+      |> Job.put_error(message)
 
     with {:ok, transitioned} <-
-           job |> Job.put_result(completed_result) |> Job.transition("completed"),
+           Job.transition(
+             job,
+             "outcome_unknown"
+           ),
+         {:ok, stored} <-
+           Jobs.update(transitioned) do
+      {:ok, stored}
+    end
+  end
+
+  defp reconcile_approval(
+         %Job{
+           status: status
+         },
+         _approval_id,
+         _reason
+       ) do
+    {:error,
+     {
+       :job_not_waiting_approval,
+       status
+     }}
+  end
+
+  defp approval_reconciliation_code({
+         :approval_service_failed,
+         {
+           :request_failed,
+           _reason
+         }
+       }),
+       do: "approval_transport_ambiguous"
+
+  defp approval_reconciliation_code({
+         :approval_service_failed,
+         {
+           :ai_service_error,
+           _status,
+           _body
+         }
+       }),
+       do: "approval_service_response_ambiguous"
+
+  defp approval_reconciliation_code({
+         :approval_service_failed,
+         {
+           :invalid_approval_result,
+           _result
+         }
+       }),
+       do: "approval_result_invalid"
+
+  defp approval_reconciliation_code({
+         :invalid_approval_outcome,
+         _reason
+       }),
+       do: "approval_contract_invalid"
+
+  defp approval_reconciliation_code({
+         :approval_id_mismatch,
+         _expected,
+         _actual
+       }),
+       do: "approval_id_mismatch"
+
+  defp approval_reconciliation_code(_reason),
+    do: "approval_outcome_unresolved"
+
+  defp complete_approved_job(
+         %Job{status: "waiting_approval"} = job,
+         approval_outcome
+       )
+       when is_map(approval_outcome) do
+    previous_result =
+      if is_map(job.result), do: job.result, else: %{}
+
+    target_status =
+      ApprovalOutcome.target_job_status(approval_outcome)
+
+    message =
+      ApprovalOutcome.message(approval_outcome)
+
+    stored_result =
+      previous_result
+      |> Map.put("approval_execution", approval_outcome)
+      |> put_approval_answer(target_status, approval_outcome, message)
+
+    job = Job.put_result(job, stored_result)
+
+    job =
+      if target_status in ["failed", "outcome_unknown"] do
+        Job.put_error(
+          job,
+          message || "Approved action did not complete successfully."
+        )
+      else
+        job
+      end
+
+    with {:ok, transitioned} <- Job.transition(job, target_status),
          {:ok, stored} <- Jobs.update(transitioned) do
       {:ok, stored}
     end
@@ -178,6 +466,22 @@ defmodule ItsmBackendWeb.JobController do
 
   defp complete_approved_job(%Job{status: status}, _),
     do: {:error, {:job_not_waiting_approval, status}}
+
+  defp put_approval_answer(result, "completed", approval_outcome, _message) do
+    Map.put(
+      result,
+      "answer",
+      approval_answer(approval_outcome)
+    )
+  end
+
+  defp put_approval_answer(result, _status, _approval_outcome, message) do
+    Map.put(
+      result,
+      "answer",
+      message || "Approved action requires operator attention."
+    )
+  end
 
   defp approval_answer(result) do
     Map.get(result, "answer") ||

@@ -54,6 +54,7 @@
         "pending",
         "processing",
         "waiting_approval",
+        "reconciliation_required",
         "completed",
         "failed"
       ]

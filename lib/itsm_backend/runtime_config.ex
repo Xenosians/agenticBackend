@@ -243,6 +243,7 @@ defmodule ItsmBackend.RuntimeConfig do
   @spec task_completion_mail!() :: task_completion_mail_config()
   def task_completion_mail! do
     config = fetch_keyword_config!(:task_completion_mail)
+
     %{
       enabled: fetch_boolean!(config, :enabled, :task_completion_mail),
       poll_interval_ms: fetch_positive_integer!(config, :poll_interval_ms, :task_completion_mail)

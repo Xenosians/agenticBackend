@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v2:internal:ai-job-completion-ack",
+  "title": "AI Job Completion Acknowledgement",
+  "description": "Internal Phoenix acknowledgement that an AI completion payload was durably resolved.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "status",
+    "acknowledgement",
+    "contract_version"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Phoenix-owned durable job identifier."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "waiting_approval",
+        "failed",
+        "denied",
+        "outcome_unknown"
+      ],
+      "description": "Durable Phoenix job status after completion handling."
+    },
+    "acknowledgement": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "duplicate"
+      ],
+      "description": "Whether the completion changed durable state or was safely recognized as an idempotent duplicate."
+    },
+    "contract_version": {
+      "const": 2
+    }
+  },
+  "additionalProperties": false
+}
