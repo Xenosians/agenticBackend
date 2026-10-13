@@ -29,8 +29,19 @@ defmodule ItsmBackendWeb.ExtensionController do
           {:ok, %{status: 200, body: body}} when is_map(body) ->
             json(conn, body)
 
-          {:ok, %{status: 422}} ->
-            conn |> put_status(422) |> json(%{error: "extension_request_rejected"})
+          {:ok, %{status: 422, body: body}} ->
+            detail =
+              case body do
+                %{"detail" => value} -> public_extension_detail(value)
+                _ -> public_extension_detail(nil)
+              end
+
+            conn
+            |> put_status(422)
+            |> json(%{
+              error: "extension_request_rejected",
+              detail: detail
+            })
 
           _ ->
             conn |> put_status(503) |> json(%{error: "extension_service_unavailable"})
@@ -39,5 +50,37 @@ defmodule ItsmBackendWeb.ExtensionController do
       {:error, conn} ->
         conn
     end
+  end
+
+  # Only a tiny, explicitly-shaped diagnostic contract is allowed to cross
+  # the Phoenix public boundary. Never proxy an arbitrary upstream body.
+  defp public_extension_detail(%{"code" => code, "message" => message} = detail)
+       when is_binary(code) and is_binary(message) do
+    result = %{
+      code: String.slice(code, 0, 80),
+      message: String.slice(message, 0, 300)
+    }
+
+    case Map.get(detail, "provider_status") do
+      status when is_integer(status) and status >= 100 and status <= 599 ->
+        Map.put(result, :provider_status, status)
+
+      _ ->
+        result
+    end
+  end
+
+  defp public_extension_detail(message) when is_binary(message) do
+    %{
+      code: "extension_request_rejected",
+      message: String.slice(message, 0, 300)
+    }
+  end
+
+  defp public_extension_detail(_) do
+    %{
+      code: "extension_request_rejected",
+      message: "Extension request rejected."
+    }
   end
 end
