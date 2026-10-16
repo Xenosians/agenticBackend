@@ -634,6 +634,35 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   # Serialization
   # ------------------------------------------------------------
 
+  @doc "Replaces a waiting proposal only while its previous full binding is unchanged."
+  def continue_if_waiting_approval(%Job{} = previous, %Job{} = next) do
+    statement = """
+    UPDATE type::record($table, $id) CONTENT $data
+    WHERE status = "waiting_approval" AND attempts = $attempts
+      AND proposed_tool = $proposal
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => previous.id,
+      "data" => serialize(next),
+      "attempts" => previous.attempts,
+      "proposal" => previous.proposed_tool
+    }
+
+    with {:ok, response} <- Surreal.query(statement, params),
+         {:ok, result} <- extract_result(response) do
+      case result do
+        nil -> {:ok, nil}
+        [] -> {:ok, nil}
+        [record] -> deserialize(record)
+        record when is_map(record) -> deserialize(record)
+        _ -> {:error, :invalid_approval_store_response}
+      end
+    end
+  end
+
   defp serialize(%Job{} = job) do
     %{
       "job_id" => job.id,

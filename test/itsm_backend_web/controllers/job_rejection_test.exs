@@ -126,10 +126,21 @@ defmodule ItsmBackendWeb.JobRejectionTest do
   test "the browser cannot replace the persisted approval identity or arguments", %{identity: id} do
     job = waiting_job(id)
 
-    response =
+    forged_response =
       auth_conn(id)
       |> post("/api/v2/jobs/#{job.id}/reject", %{
         "approval_id" => "another-approval",
+        "arguments" => %{"path" => "other-directory"}
+      })
+      |> json_response(409)
+
+    assert forged_response == %{"error" => "approval_binding_changed"}
+    refute_receive {:ai_approval_decision, _, _}
+
+    response =
+      auth_conn(id)
+      |> post("/api/v2/jobs/#{job.id}/reject", %{
+        "approval_id" => "approval-fixture",
         "arguments" => %{"path" => "other-directory"}
       })
       |> json_response(200)

@@ -139,6 +139,7 @@ defmodule ItsmBackend.Jobs.JobNotifications do
         if(agent, do: "Agent: #{agent}", else: nil),
         if(tool, do: "Tool: #{tool}", else: nil)
       ]
+      |> Kernel.++(workflow_details(job))
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n")
 
@@ -156,6 +157,24 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
     {subject, body}
   end
+
+  defp workflow_details(%Job{
+         status: "completed",
+         result: %{
+           "workflow" => %{"kind" => "account_ticket", "state" => "completed"} = workflow,
+           "approval_execution" => execution
+         }
+       }) do
+    account = safe_metadata(get_in(workflow, ["account", "user_id"]))
+    ticket = safe_metadata(get_in(execution, ["result", "ticket_key"]))
+
+    [
+      if(account, do: "Created account: #{account}"),
+      if(ticket, do: "Created Jira ticket: #{ticket}")
+    ]
+  end
+
+  defp workflow_details(_job), do: []
 
   defp denial_message(%Job{
          result: %{"approval_execution" => %{"execution_status" => "rejected"}}

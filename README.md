@@ -2,6 +2,8 @@
 
 Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns authentication, chats, durable jobs, and the browser-facing approval lifecycle, with application data stored in SurrealDB.
 
+> **Project status:** SRS 1.8 MVP candidate. The durable product path is implemented, but MVP v1.0 is not declared until the cross-repository release gate has current live and browser evidence.
+
 ## Features
 
 - Registration, email verification, login, password reset, session restoration, and session revocation.

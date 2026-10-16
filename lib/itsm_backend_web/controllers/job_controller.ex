@@ -21,6 +21,7 @@ defmodule ItsmBackendWeb.JobController do
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Jobs.JobNotifications
   alias ItsmBackend.Jobs.PublicContract
+  alias ItsmBackend.Jobs.WorkflowContinuation
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
   alias ItsmBackendWeb.PublicError
@@ -128,6 +129,7 @@ defmodule ItsmBackendWeb.JobController do
              {:error, :forbidden},
          {:ok, approval_id} <-
            approval_id(job),
+         :ok <- validate_decision_binding(conn.body_params, job, approval_id),
          {:ok, resolved_job} <-
            resolve_approval(
              job,
@@ -192,6 +194,15 @@ defmodule ItsmBackendWeb.JobController do
           "The approval could not be completed."
         )
     end
+  end
+
+  defp validate_decision_binding(body, job, approval_id) do
+    submitted = Map.get(body, "approval_id")
+    workflow? = get_in(job.result || %{}, ["workflow", "kind"]) == "account_ticket"
+
+    if submitted == approval_id or (submitted == nil and not workflow?),
+      do: :ok,
+      else: {:error, :approval_binding_changed}
   end
 
   defp approval_id(%Job{
@@ -289,10 +300,11 @@ defmodule ItsmBackendWeb.JobController do
              approval_outcome,
              approval_id
            ) do
-      complete_approved_job(
-        job,
-        approval_outcome
-      )
+      case WorkflowContinuation.resolve(job, approval_outcome, approval_result["continuation"]) do
+        :none -> complete_approved_job(job, approval_outcome)
+        {:ok, continued} -> Jobs.continue_approval(job, continued)
+        {:error, reason} -> reconcile_approval(job, approval_id, reason)
+      end
     else
       {:error, reason} ->
         reconcile_approval(
@@ -454,15 +466,34 @@ defmodule ItsmBackendWeb.JobController do
       if is_map(job.result), do: job.result, else: %{}
 
     target_status =
-      ApprovalOutcome.target_job_status(approval_outcome)
+      if WorkflowContinuation.verified_terminal?(job, approval_outcome),
+        do: ApprovalOutcome.target_job_status(approval_outcome),
+        else: "outcome_unknown"
 
     message =
-      ApprovalOutcome.message(approval_outcome)
+      if target_status == "outcome_unknown" and
+           approval_outcome["execution_status"] == "succeeded",
+         do:
+           "Jira creation has no verified provider read-back. Do not repeat the action; trusted reconciliation is required.",
+         else: ApprovalOutcome.message(approval_outcome)
 
     stored_result =
       previous_result
       |> Map.put("approval_execution", approval_outcome)
       |> put_approval_answer(target_status, approval_outcome, message)
+
+    stored_result =
+      if get_in(previous_result, ["workflow", "state"]) == "awaiting_ticket_approval" do
+        stored_result
+        |> Map.put(
+          "approval_history",
+          Map.get(previous_result, "approval_history", []) ++
+            [%{"proposal" => job.proposed_tool, "execution" => approval_outcome}]
+        )
+        |> Map.put("workflow", Map.put(previous_result["workflow"], "state", target_status))
+      else
+        stored_result
+      end
 
     job = Job.put_result(job, stored_result)
 

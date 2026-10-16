@@ -4,6 +4,7 @@ defmodule ItsmBackend.Jobs do
   """
 
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.Jobs.Events
   alias ItsmBackend.Jobs.SurrealStore
 
   @completion_statuses [
@@ -35,6 +36,7 @@ defmodule ItsmBackend.Jobs do
            Job.new(attrs),
          {:ok, stored_job} <-
            SurrealStore.create(job) do
+      Events.publish(stored_job)
       {:ok, stored_job}
     end
   end
@@ -71,7 +73,21 @@ defmodule ItsmBackend.Jobs do
           {:ok, Job.t()}
           | {:error, term()}
   def update(%Job{} = job) do
-    SurrealStore.update(job)
+    job |> SurrealStore.update() |> Events.after_write()
+  end
+
+  @doc "Persists an approval decision only while its exact proposal is awaiting a decision."
+  def continue_approval(%Job{} = previous, %Job{} = next) do
+    if next.id == previous.id and next.user_id == previous.user_id and
+         next.attempts == previous.attempts and next.message == previous.message and
+         next.conversation_id == previous.conversation_id do
+      case SurrealStore.continue_if_waiting_approval(previous, next) do
+        {:ok, nil} -> {:error, :approval_binding_changed}
+        result -> Events.after_write(result)
+      end
+    else
+      {:error, :approval_binding_changed}
+    end
   end
 
   @doc "Persists an approval decision only while its exact proposal is awaiting a decision."
@@ -90,7 +106,7 @@ defmodule ItsmBackend.Jobs do
         end
 
       result ->
-        result
+        Events.after_write(result)
     end
   end
 
@@ -114,7 +130,7 @@ defmodule ItsmBackend.Jobs do
           {:ok, Job.t() | nil}
           | {:error, term()}
   def claim_oldest(lease_seconds) do
-    SurrealStore.claim_oldest(lease_seconds)
+    lease_seconds |> SurrealStore.claim_oldest() |> Events.after_write()
   end
 
   # ------------------------------------------------------------
@@ -272,6 +288,7 @@ defmodule ItsmBackend.Jobs do
       job,
       error
     )
+    |> Events.after_write()
   end
 
   # ------------------------------------------------------------
@@ -483,7 +500,10 @@ defmodule ItsmBackend.Jobs do
      }}
   end
 
-  defp resolve_completion_write(%Job{} = stored, _desired), do: {:ok, stored, :applied}
+  defp resolve_completion_write(%Job{} = stored, _desired) do
+    Events.publish(stored)
+    {:ok, stored, :applied}
+  end
 
   defp resolve_completion_write(nil, desired) do
     with {:ok, current} <- get(desired.id),

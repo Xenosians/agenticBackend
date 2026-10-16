@@ -103,6 +103,21 @@ defmodule ItsmBackend.Auth do
 
   def authenticate_session(_), do: {:error, :invalid_session}
 
+  @doc "Revalidates the persisted identity bound to a signed socket ticket."
+  def authenticate_session_id(user_id, session_id)
+      when is_binary(user_id) and is_binary(session_id) do
+    with {:ok, session} <- SurrealStore.find_active_session(session_id, user_id, now()),
+         true <- is_map(session),
+         {:ok, user} <- SurrealStore.get_user(user_id),
+         true <- is_map(user) and user["status"] == "active" do
+      {:ok, public_user(user), session}
+    else
+      _ -> {:error, :invalid_session}
+    end
+  end
+
+  def authenticate_session_id(_, _), do: {:error, :invalid_session}
+
   def list_sessions(user_id, current_session_id) do
     with {:ok, sessions} <- SurrealStore.list_sessions(user_id) do
       {:ok,

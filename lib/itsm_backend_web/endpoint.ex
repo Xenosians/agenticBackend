@@ -9,6 +9,17 @@ defmodule ItsmBackendWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  socket "/socket", ItsmBackendWeb.UserSocket,
+    websocket: [
+      auth_token: true,
+      check_origin: {ItsmBackendWeb.SocketAuth, :origin_allowed?, []}
+    ],
+    longpoll: false
+
+  socket "/ai_socket", ItsmBackendWeb.InternalJobSocket,
+    websocket: [connect_info: [:x_headers]],
+    longpoll: false
+
   socket "/live",
          Phoenix.LiveView.Socket,
          websocket: [

@@ -55,6 +55,7 @@ defmodule ItsmBackendWeb.Router do
 
     get "/v2/chats/:id/history", ChatController, :history
     get "/v2/jobs/:id", JobController, :show
+    post "/v2/jobs/socket-token", SocketTokenController, :create
     post "/v2/jobs/:id/approve", JobController, :approve
     post "/v2/jobs/:id/reject", JobController, :reject
 

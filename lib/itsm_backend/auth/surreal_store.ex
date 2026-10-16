@@ -97,6 +97,26 @@ defmodule ItsmBackend.Auth.SurrealStore do
     end
   end
 
+  def find_active_session(session_id, user_id, now) do
+    statement = """
+    SELECT * FROM auth_session
+    WHERE session_id = $session_id AND user_id = $user_id
+      AND revoked_at = $revoked_at AND expires_at > $now
+    LIMIT 1;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{
+             "session_id" => session_id,
+             "user_id" => user_id,
+             "revoked_at" => nil,
+             "now" => now
+           }),
+         {:ok, record} <- single_or_nil(results) do
+      {:ok, record}
+    end
+  end
+
   def touch_session(session_id, now) do
     statement = """
     UPDATE ONLY type::record($table, $id)
