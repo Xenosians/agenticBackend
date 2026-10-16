@@ -43,14 +43,21 @@ defmodule ItsmBackend.Mail.OutboxStore do
 
       statement = """
       CREATE ONLY type::record($table, $id)
-      CONTENT $data
+      CONTENT object::extend(encoding::json::decode($data_json), {
+        created_at: <datetime>$now,
+        next_attempt_at: <datetime>$now
+      })
       RETURN AFTER;
       """
 
       params = %{
         "table" => @table,
         "id" => id,
-        "data" => data
+        "now" => now,
+        # JSON RPC coerces record-shaped string parameters (including nested
+        # ones), so a key like job:<id>:1:completed can lose its final segments.
+        # Decode one JSON envelope inside SurrealDB to preserve text exactly.
+        "data_json" => Jason.encode!(data)
       }
 
       case Surreal.query(statement, params) do

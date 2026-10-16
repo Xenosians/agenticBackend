@@ -74,6 +74,26 @@ defmodule ItsmBackend.Jobs do
     SurrealStore.update(job)
   end
 
+  @doc "Persists an approval decision only while its exact proposal is awaiting a decision."
+  def complete_approval(%Job{status: status} = job) when status in @terminal_statuses do
+    case SurrealStore.complete_if_waiting_approval(job) do
+      {:ok, nil} ->
+        with {:ok, current} <- get(job.id) do
+          if current.attempts == job.attempts and current.proposed_tool == job.proposed_tool and
+               current.status in @terminal_statuses do
+            # Another decision response already resolved this exact proposal.
+            # A late ambiguous response must never overwrite a terminal result.
+            {:ok, current}
+          else
+            {:error, :approval_binding_changed}
+          end
+        end
+
+      result ->
+        result
+    end
+  end
+
   # ------------------------------------------------------------
   # Pending work discovery
   # ------------------------------------------------------------

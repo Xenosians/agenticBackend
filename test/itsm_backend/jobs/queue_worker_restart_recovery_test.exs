@@ -46,6 +46,16 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
     end
 
     @impl true
+    def reject(_approval_id) do
+      {:error, :not_used}
+    end
+
+    @impl true
+    def integrations do
+      {:error, :not_used}
+    end
+
+    @impl true
     def health do
       {:error, :simulated_offline}
     end

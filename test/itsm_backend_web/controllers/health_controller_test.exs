@@ -47,6 +47,16 @@ defmodule ItsmBackendWeb.HealthControllerTest do
     def approve(_approval_id) do
       {:error, :not_used}
     end
+
+    @impl true
+    def reject(_approval_id) do
+      {:error, :not_used}
+    end
+
+    @impl true
+    def integrations do
+      {:error, :not_used}
+    end
   end
 
   defmodule OfflineAIClient do
@@ -82,6 +92,16 @@ defmodule ItsmBackendWeb.HealthControllerTest do
 
     @impl true
     def approve(_approval_id) do
+      {:error, :not_used}
+    end
+
+    @impl true
+    def reject(_approval_id) do
+      {:error, :not_used}
+    end
+
+    @impl true
+    def integrations do
       {:error, :not_used}
     end
   end

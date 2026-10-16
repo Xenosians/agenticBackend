@@ -198,6 +198,31 @@ defmodule ItsmBackend.AIClient.HTTPTest do
   # Response helper
   # ------------------------------------------------------------
 
+  test "approval decisions authenticate the internal request and send only the stored id" do
+    for decision <- [:approve, :reject] do
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/v1/approvals/approval-123/#{decision}"
+
+        assert Plug.Conn.get_req_header(conn, "x-internal-token") ==
+                 [ItsmBackend.RuntimeConfig.internal_job_token!()]
+
+        json_response(conn, 200, %{"approval_id" => "approval-123"})
+      end)
+
+      assert {:ok, %{"approval_id" => "approval-123"}} = apply(HTTP, decision, ["approval-123"])
+    end
+  end
+
+  test "a transient rejection service error is returned without an automatic retry" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/v1/approvals/approval-123/reject"
+      json_response(conn, 503, %{"error" => "temporarily_unavailable"})
+    end)
+
+    assert {:error, {:ai_service_error, 503, _}} = HTTP.reject("approval-123")
+  end
+
   defp json_response(
          conn,
          status,

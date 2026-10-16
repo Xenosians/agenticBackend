@@ -11,46 +11,24 @@ defmodule ItsmBackend.Storage.Schema do
 
   alias ItsmBackend.Surreal
 
-  @statements [
-    "DEFINE TABLE IF NOT EXISTS app_user SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE TABLE IF NOT EXISTS auth_identity SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE TABLE IF NOT EXISTS auth_session SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE TABLE IF NOT EXISTS auth_token SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE TABLE IF NOT EXISTS chat SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE TABLE IF NOT EXISTS mail_outbox SCHEMALESS PERMISSIONS NONE;",
-    "DEFINE INDEX IF NOT EXISTS auth_identity_user_id ON TABLE auth_identity FIELDS user_id UNIQUE;",
-    "DEFINE INDEX IF NOT EXISTS auth_session_token_hash ON TABLE auth_session FIELDS token_hash UNIQUE;",
-    "DEFINE INDEX IF NOT EXISTS auth_session_user_id ON TABLE auth_session FIELDS user_id;",
-    "DEFINE INDEX IF NOT EXISTS auth_token_user_purpose ON TABLE auth_token FIELDS user_id, purpose;",
-    "DEFINE INDEX IF NOT EXISTS mail_outbox_status_next_attempt ON TABLE mail_outbox FIELDS status, next_attempt_at;",
-    "DEFINE INDEX IF NOT EXISTS chat_user_id ON TABLE chat FIELDS user_id;"
-  ]
-
   @spec ensure() :: :ok | {:error, term()}
   def ensure do
-    Enum.reduce_while(
-      @statements,
-      :ok,
-      fn statement, :ok ->
-        case Surreal.query(statement) do
-          {:ok, _results} ->
-            {:cont, :ok}
-
-          {:error, reason} ->
-            {:halt,
-             {:error,
-              {
-                :schema_statement_failed,
-                statement,
-                reason
-              }}}
-        end
-      end
-    )
+    with {:ok, schema} <- File.read(schema_path()),
+         {:ok, _results} <- Surreal.query(schema) do
+      :ok
+    else
+      {:error, reason} -> {:error, {:schema_initialization_failed, reason}}
+    end
   end
 
   @spec statements() :: [String.t()]
   def statements do
-    @statements
+    [File.read!(schema_path())]
+  end
+
+  # Bootstrap and isolated tests apply the same canonical schema. Keeping a
+  # second DDL list here previously omitted new credential tables and indexes.
+  defp schema_path do
+    :itsm_backend |> :code.priv_dir() |> to_string() |> Path.join("surreal/schema.surql")
   end
 end

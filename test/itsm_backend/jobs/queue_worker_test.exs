@@ -78,6 +78,16 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
     end
 
     @impl true
+    def reject(_approval_id) do
+      {:error, :not_used}
+    end
+
+    @impl true
+    def integrations do
+      {:error, :not_used}
+    end
+
+    @impl true
     def health do
       {:ok,
        %{

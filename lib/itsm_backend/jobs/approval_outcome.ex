@@ -13,6 +13,7 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
     succeeded  -> completed
     failed     -> failed
     unresolved -> outcome_unknown
+    rejected   -> denied (human rejection, not a policy denial)
 
   An unresolved outcome is never automatically retried because the
   external side effect may already have occurred.
@@ -21,13 +22,15 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
   @execution_statuses [
     "succeeded",
     "failed",
-    "unresolved"
+    "unresolved",
+    "rejected"
   ]
 
   @status_pairs %{
     "succeeded" => "approved",
     "failed" => "failed",
-    "unresolved" => "executing"
+    "unresolved" => "executing",
+    "rejected" => "rejected"
   }
 
   @spec normalize(term()) :: {:ok, map()} | {:error, term()}
@@ -40,7 +43,8 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
          :ok <- require_matching_authority_state(execution_status, approval_status),
          {:ok, replayed} <- required_boolean(payload, "replayed"),
          {:ok, result} <- optional_map(payload, "result"),
-         {:ok, error} <- optional_string(payload, "error") do
+         {:ok, error} <- optional_string(payload, "error"),
+         :ok <- validate_rejection_result(execution_status, result) do
       {:ok,
        %{
          "approval_id" => approval_id,
@@ -97,12 +101,17 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
   @spec target_job_status(map()) :: String.t()
   def target_job_status(%{"execution_status" => "succeeded"}), do: "completed"
   def target_job_status(%{"execution_status" => "failed"}), do: "failed"
+  def target_job_status(%{"execution_status" => "rejected"}), do: "denied"
 
   def target_job_status(%{"execution_status" => "unresolved"}),
     do: "outcome_unknown"
 
   @spec message(map()) :: String.t() | nil
   def message(%{"execution_status" => "succeeded"}), do: nil
+
+  def message(%{"execution_status" => "rejected"}) do
+    "Action rejected by the user. No tool was executed."
+  end
 
   def message(%{"execution_status" => "failed"} = outcome) do
     outcome["error"] ||
@@ -120,6 +129,13 @@ defmodule ItsmBackend.Jobs.ApprovalOutcome do
 
   defp require_processed(value),
     do: {:error, {:invalid_protocol_status, value}}
+
+  defp validate_rejection_result("rejected", nil), do: :ok
+
+  defp validate_rejection_result("rejected", _),
+    do: {:error, :rejected_action_has_execution_result}
+
+  defp validate_rejection_result(_, _), do: :ok
 
   defp required_execution_status(payload) do
     with {:ok, value} <- required_string(payload, "execution_status") do

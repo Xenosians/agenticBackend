@@ -74,6 +74,20 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
+  def reject(approval_id) do
+    {:ok,
+     %{
+       "approval_id" => approval_id,
+       "protocol_status" => "processed",
+       "execution_status" => "rejected",
+       "approval_status" => "rejected",
+       "replayed" => false,
+       "result" => nil,
+       "error" => "Action rejected by the user. No tool was executed."
+     }}
+  end
+
+  @impl true
   def integrations do
     {:ok,
      %{

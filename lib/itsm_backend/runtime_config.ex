@@ -19,6 +19,7 @@ defmodule ItsmBackend.RuntimeConfig do
     {:run, 2},
     {:execute_job, 4},
     {:approve, 1},
+    {:reject, 1},
     {:health, 0},
     {:ready, 0}
   ]
@@ -386,6 +387,23 @@ defmodule ItsmBackend.RuntimeConfig do
           :credential_vault
         )
     }
+  end
+
+  # ------------------------------------------------------------
+  # Local mailbox lab
+  # ------------------------------------------------------------
+
+  @spec mailbox_lab_domain!() :: String.t()
+  def mailbox_lab_domain! do
+    domain = Application.get_env(:itsm_backend, :mailbox_lab_domain)
+
+    if is_binary(domain) and byte_size(domain) <= 253 and
+         Regex.match?(~r/\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+test\z/, domain) do
+      domain
+    else
+      raise Error,
+        message: "expected :itsm_backend.mailbox_lab_domain to be a lowercase .test domain"
+    end
   end
 
   # ------------------------------------------------------------

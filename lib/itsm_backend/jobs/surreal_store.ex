@@ -601,6 +601,35 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     end
   end
 
+  @doc "Atomically resolves the same waiting approval, preserving concurrent terminal outcomes."
+  def complete_if_waiting_approval(%Job{} = job) do
+    statement = """
+    UPDATE type::record($table, $id) CONTENT $data
+    WHERE status = "waiting_approval" AND attempts = $attempts
+      AND proposed_tool = $proposal
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => job.id,
+      "data" => serialize(job),
+      "attempts" => job.attempts,
+      "proposal" => job.proposed_tool
+    }
+
+    with {:ok, response} <- Surreal.query(statement, params),
+         {:ok, result} <- extract_result(response) do
+      case result do
+        nil -> {:ok, nil}
+        [] -> {:ok, nil}
+        [record] -> deserialize(record)
+        record when is_map(record) -> deserialize(record)
+        _ -> {:error, :invalid_approval_store_response}
+      end
+    end
+  end
+
   # ------------------------------------------------------------
   # Serialization
   # ------------------------------------------------------------

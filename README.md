@@ -7,10 +7,10 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Registration, email verification, login, password reset, session restoration, and session revocation.
 - User-owned chats, history, and durable AI jobs.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
-- Approval requests tied to persisted jobs, with structured results and explicit failure, denial, and unknown-outcome states.
+- Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
 - Authenticated model/harness/dataset commands proxied to the AI service; ownership comes from the session and mutations require CSRF.
 - Backend/AI health and integration status endpoints.
-- Local development mail or Gmail API delivery through OAuth2, plus a durable mail outbox.
+- Local development mail, Brevo HTTPS API or Gmail OAuth2 delivery, plus a durable mail outbox.
 - Encrypted temporary account credentials and versioned JSON contracts between services.
 
 ## How the repositories fit together
@@ -49,7 +49,7 @@ Use [.env.example](.env.example) and [runtime configuration](config/runtime.exs)
 | `CREDENTIAL_ENCRYPTION_KEY_B64` | Persistent encryption key: exactly 32 random bytes, base64 encoded |
 | `APP_FRONTEND_URL`, `CORS_ALLOWED_ORIGINS` | Frontend origin and browser access policy |
 | `AUTH_COOKIE_*` | Cookie policy appropriate to the deployment |
-| `MAILER_MODE` | `local` for development, or configured `gmail_api` |
+| `MAILER_MODE` | `local` for development, or configured `brevo_api` / `gmail_api` |
 
 For the included database container, populate the additional variables required by [docker-compose.yaml](docker-compose.yaml), then run:
 
@@ -73,12 +73,23 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Identity and sessions | `/api/v1/auth/*` |
 | Chats | `/api/v1/chats`, `/api/v1/chats/:id/history` |
 | Job creation | `POST /api/v1/jobs` |
-| Current job/history reads and approval | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/chats/:id/history` |
+| Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/chats/:id/history` |
 | User extensions | `GET/POST /api/v1/extensions` |
 | Integration status | `GET /api/v1/integrations` |
 | Internal AI protocol | `/api/internal/v1/*` |
 
 The current v2 public job contract includes `pending`, `processing`, `waiting_approval`, `completed`, `failed`, `denied`, and `outcome_unknown`. Legacy v1 routes remain available. See the [v1 contract guide](contracts/v1/readme.md) and [v2 schemas](contracts/v2) before changing shared payloads.
+
+Approval decisions require the authenticated owner and browser CSRF protection.
+Human rejection appears as `denied` with an explicit user-rejection explanation
+and a persisted `approval_execution.execution_status` of `rejected`; legacy v1
+projects that job to `failed`. The AI atomically decides between rejecting a
+pending proposal and executing it. Rejection cannot cancel an action that has
+already started: Phoenix records the returned execution outcome instead.
+Unclear decision delivery becomes `outcome_unknown`, and terminal decisions
+cannot be submitted again. Approval persistence compares the original attempt
+and proposal so a late response cannot overwrite another terminal outcome.
+Internal decision requests authenticate to the AI and disable automatic retries.
 
 ## Tests and checks
 
@@ -100,6 +111,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - Reference retrieval currently uses local full-text search. n8n/workflow support is manifest validation only, with no runner or webhook registration.
 - User model/dataset selection leaves the networking specialist's existing model and context unchanged.
 - Provider availability and real email delivery depend on deployment configuration. There is no unified deployment command for all three repositories.
+- A Brevo delivery call makes one attempt, including rate limits and connection loss. This transport does not resend an ambiguously received message; callers own reconciliation and any later attempt. The generic mail outbox has its own retry lifecycle.
 
 ## Source references
 

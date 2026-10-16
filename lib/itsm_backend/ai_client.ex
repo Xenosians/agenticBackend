@@ -44,6 +44,10 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  @callback reject(approval_id :: String.t()) ::
+              {:ok, map()}
+              | {:error, term()}
+
   @callback health() ::
               {:ok, map()}
               | {:error, term()}

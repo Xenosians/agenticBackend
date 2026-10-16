@@ -141,10 +141,24 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   @impl true
   def approve(approval_id) do
+    approval_decision(approval_id, "approve")
+  end
+
+  @impl true
+  def reject(approval_id) do
+    approval_decision(approval_id, "reject")
+  end
+
+  defp approval_decision(approval_id, decision) do
     config =
       RuntimeConfig.ai_service!()
 
-    case Req.post("#{config.base_url}/v1/approvals/#{approval_id}/approve") do
+    case Req.post(
+           "#{config.base_url}/v1/approvals/#{URI.encode_www_form(approval_id)}/#{decision}",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           receive_timeout: config.run_timeout_ms,
+           retry: false
+         ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
         {:ok, body}

@@ -51,6 +51,30 @@ defmodule ItsmBackend.Jobs.ApprovalOutcomeTest do
     assert ApprovalOutcome.message(outcome) =~ "reconciliation"
   end
 
+  test "human rejection is denied with a distinct explanation and no execution result" do
+    payload = %{
+      "approval_id" => "a-rejected",
+      "protocol_status" => "processed",
+      "execution_status" => "rejected",
+      "approval_status" => "rejected",
+      "replayed" => false,
+      "result" => nil,
+      "error" => nil
+    }
+
+    assert {:ok, outcome} = ApprovalOutcome.normalize(payload)
+    assert ApprovalOutcome.target_job_status(outcome) == "denied"
+
+    assert ApprovalOutcome.message(outcome) ==
+             "Action rejected by the user. No tool was executed."
+
+    assert {:error, {:invalid_approval_outcome, :rejected_action_has_execution_result}} =
+             ApprovalOutcome.normalize(Map.put(payload, "result", %{"ok" => true}))
+
+    assert {:error, {:invalid_approval_outcome, {:authority_state_mismatch, _, _, _}}} =
+             ApprovalOutcome.normalize(Map.put(payload, "approval_status", "executing"))
+  end
+
   test "rejects contradictory authority state" do
     assert {:error, {:invalid_approval_outcome, {:authority_state_mismatch, _, _, _}}} =
              ApprovalOutcome.normalize(%{

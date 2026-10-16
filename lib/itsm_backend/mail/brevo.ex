@@ -4,10 +4,13 @@ defmodule ItsmBackend.Mail.Brevo do
 
   Authentication uses one server-side static API key. No SMTP session,
   Gmail OAuth access token, or refresh-token exchange is involved.
+
+  Each delivery makes one request. A missing response does not prove that
+  Brevo rejected the message, so this transport never automatically resends.
+  Callers must reconcile ambiguous delivery before another attempt.
   """
 
   @endpoint "https://api.brevo.com/v3/smtp/email"
-  @max_attempts 3
 
   @spec deliver(
           String.t() | {String.t(), String.t()},
@@ -31,11 +34,11 @@ defmodule ItsmBackend.Mail.Brevo do
         }
         |> maybe_put_html(html_body)
 
-      request(api_key, payload, 1)
+      request(api_key, payload)
     end
   end
 
-  defp request(api_key, payload, attempt) do
+  defp request(api_key, payload) do
     case Req.post(
            @endpoint,
            headers: [
@@ -43,38 +46,23 @@ defmodule ItsmBackend.Mail.Brevo do
              {"api-key", api_key}
            ],
            json: payload,
-           receive_timeout: 20_000
+           receive_timeout: 20_000,
+           retry: false
          ) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
         {:ok, %{provider: "brevo", status: status, message_id: message_id(body)}}
 
       {:ok, %Req.Response{status: status, body: body}}
       when status == 429 or status >= 500 ->
-        retry_or_error(
-          api_key,
-          payload,
-          attempt,
-          {:brevo_transient_error, status, summarize_body(body)}
-        )
+        {:error, {:brevo_transient_error, status, summarize_body(body)}}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:brevo_delivery_rejected, status, summarize_body(body)}}
 
       {:error, reason} ->
-        retry_or_error(api_key, payload, attempt, {:brevo_request_failed, reason})
+        {:error, {:brevo_request_failed, reason}}
     end
   end
-
-  defp retry_or_error(api_key, payload, attempt, _reason) when attempt < @max_attempts do
-    Process.sleep(retry_delay_ms(attempt))
-    request(api_key, payload, attempt + 1)
-  end
-
-  defp retry_or_error(_api_key, _payload, _attempt, reason), do: {:error, reason}
-
-  defp retry_delay_ms(1), do: 500
-  defp retry_delay_ms(2), do: 1_500
-  defp retry_delay_ms(_attempt), do: 3_000
 
   defp normalize_recipient({name, email}) when is_binary(name) and is_binary(email) do
     with {:ok, email} <- normalize_email(email) do

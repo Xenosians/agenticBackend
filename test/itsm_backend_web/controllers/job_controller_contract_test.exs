@@ -83,6 +83,22 @@ defmodule ItsmBackendWeb.JobControllerContractTest do
            }
   end
 
+  test "binds a storage-record chat alias to its canonical conversation history",
+       %{conn: conn, user: user, chat: chat} do
+    conn =
+      post(conn, ~p"/api/v1/jobs", %{
+        "chat_id" => chat["id"],
+        "message" => "Keep this request in the authorized chat history."
+      })
+
+    response = json_response(conn, 202)
+    assert {:ok, job} = Jobs.get(response["job_id"])
+    assert job.conversation_id == chat["chat_id"]
+
+    assert {:ok, messages} = ItsmBackend.Chats.history(user, chat["chat_id"], 100, 2)
+    assert Enum.any?(messages, &(&1["job_id"] == job.id))
+  end
+
   test "rejects browser supplied user identity",
        %{
          conn: conn,

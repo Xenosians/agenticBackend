@@ -520,6 +520,13 @@ if config_env() != :test do
 end
 
 # ------------------------------------------------------------
+# Local mailbox lab. The AI and Maddy deployment must use the same .test domain.
+# This setting never enables mailbox creation by itself.
+# ------------------------------------------------------------
+
+config :itsm_backend, :mailbox_lab_domain, System.get_env("MAILBOX_LAB_DOMAIN") || "itsm.test"
+
+# ------------------------------------------------------------
 # Production endpoint
 #
 # PHX_PUBLIC_URL describes the externally visible origin.

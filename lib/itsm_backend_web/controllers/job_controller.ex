@@ -10,6 +10,7 @@ defmodule ItsmBackendWeb.JobController do
 
   request_contract(:show, [])
   request_contract(:approve, [])
+  request_contract(:reject, [])
 
   require Logger
 
@@ -18,6 +19,7 @@ defmodule ItsmBackendWeb.JobController do
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.ApprovalOutcome
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.Jobs.JobNotifications
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
@@ -35,12 +37,12 @@ defmodule ItsmBackendWeb.JobController do
 
   defp create_authenticated(conn, user) do
     with {:ok, payload} <- PublicContract.validate_create_request(conn.body_params),
-         {:ok, _chat} <- Chats.get_authorized(user, payload["chat_id"]),
-         {:ok, _chat} <- Chats.touch(payload["chat_id"]),
+         {:ok, chat} <- Chats.get_authorized(user, payload["chat_id"]),
+         {:ok, _chat} <- Chats.touch(chat["chat_id"]),
          {:ok, job} <-
            Jobs.create(%{
              "user_id" => user["user_id"],
-             "conversation_id" => payload["chat_id"],
+             "conversation_id" => chat["chat_id"],
              "message" => payload["message"]
            }),
          {:ok, response} <- PublicContract.build_create_response(job.id, job.status) do
@@ -102,13 +104,21 @@ defmodule ItsmBackendWeb.JobController do
   end
 
   def approve(conn, %{"id" => job_id}) do
+    decide_approval(conn, job_id, :approve)
+  end
+
+  def reject(conn, %{"id" => job_id}) do
+    decide_approval(conn, job_id, :reject)
+  end
+
+  defp decide_approval(conn, job_id, decision) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
-      {:ok, conn, ctx} -> approve_authenticated(conn, ctx.user, job_id)
+      {:ok, conn, ctx} -> decide_approval_authenticated(conn, ctx.user, job_id, decision)
       {:error, conn} -> conn
     end
   end
 
-  defp approve_authenticated(conn, user, job_id) do
+  defp decide_approval_authenticated(conn, user, job_id, decision) do
     with {:ok, job} <- Jobs.get(job_id),
          true <-
            Authorization.owns_resource?(
@@ -121,10 +131,13 @@ defmodule ItsmBackendWeb.JobController do
          {:ok, resolved_job} <-
            resolve_approval(
              job,
-             approval_id
+             approval_id,
+             decision
            ),
          {:ok, response} <-
            PublicContract.build_job_response(resolved_job, wire_version(conn)) do
+      JobNotifications.enqueue_best_effort(resolved_job)
+
       json(
         conn,
         response
@@ -162,6 +175,9 @@ defmodule ItsmBackendWeb.JobController do
         |> json(%{
           error: "approval_id_missing"
         })
+
+      {:error, :approval_binding_changed} ->
+        conn |> put_status(:conflict) |> json(%{error: "approval_binding_changed"})
 
       {:error, reason} ->
         Logger.error(
@@ -220,9 +236,10 @@ defmodule ItsmBackendWeb.JobController do
          %Job{
            status: "waiting_approval"
          } = job,
-         approval_id
+         approval_id,
+         decision
        ) do
-    case execute_approval(approval_id) do
+    case execute_approval_decision(approval_id, decision) do
       {:ok, approval_result} ->
         resolve_authoritative_approval(
           job,
@@ -250,7 +267,8 @@ defmodule ItsmBackendWeb.JobController do
          %Job{
            status: status
          },
-         _approval_id
+         _approval_id,
+         _decision
        ) do
     {:error,
      {
@@ -285,8 +303,8 @@ defmodule ItsmBackendWeb.JobController do
     end
   end
 
-  defp execute_approval(approval_id) do
-    case RuntimeConfig.ai_client!().approve(approval_id) do
+  defp execute_approval_decision(approval_id, decision) when decision in [:approve, :reject] do
+    case apply(RuntimeConfig.ai_client!(), decision, [approval_id]) do
       {:ok, result}
       when is_map(result) ->
         {:ok, result}
@@ -325,7 +343,7 @@ defmodule ItsmBackendWeb.JobController do
     )
 
     message =
-      "The approved action has an unresolved execution outcome. " <>
+      "The approval decision has an unresolved outcome. " <>
         "Automatic retry is disabled; trusted reconciliation is required."
 
     previous_result =
@@ -364,7 +382,7 @@ defmodule ItsmBackendWeb.JobController do
              "outcome_unknown"
            ),
          {:ok, stored} <-
-           Jobs.update(transitioned) do
+           Jobs.complete_approval(transitioned) do
       {:ok, stored}
     end
   end
@@ -449,7 +467,7 @@ defmodule ItsmBackendWeb.JobController do
     job = Job.put_result(job, stored_result)
 
     job =
-      if target_status in ["failed", "outcome_unknown"] do
+      if target_status in ["failed", "denied", "outcome_unknown"] do
         Job.put_error(
           job,
           message || "Approved action did not complete successfully."
@@ -459,7 +477,7 @@ defmodule ItsmBackendWeb.JobController do
       end
 
     with {:ok, transitioned} <- Job.transition(job, target_status),
-         {:ok, stored} <- Jobs.update(transitioned) do
+         {:ok, stored} <- Jobs.complete_approval(transitioned) do
       {:ok, stored}
     end
   end

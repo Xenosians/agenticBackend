@@ -51,9 +51,12 @@ defmodule ItsmBackendWeb.Router do
          JobController,
          :approve
 
+    post "/v1/jobs/:id/reject", JobController, :reject
+
     get "/v2/chats/:id/history", ChatController, :history
     get "/v2/jobs/:id", JobController, :show
     post "/v2/jobs/:id/approve", JobController, :approve
+    post "/v2/jobs/:id/reject", JobController, :reject
 
     # ----------------------------------------------------------
     # Internal AI -> Phoenix durable-job protocol
@@ -63,6 +66,8 @@ defmodule ItsmBackendWeb.Router do
     post "/internal/v1/provisioned-accounts",
          ProvisionedAccountController,
          :create
+
+    post "/internal/v1/provisioned-mailboxes", ProvisionedMailboxController, :create
 
     post "/internal/v1/jobs/:id/heartbeat",
          JobHeartbeatController,

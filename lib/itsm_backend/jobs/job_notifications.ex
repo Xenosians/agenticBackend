@@ -123,14 +123,14 @@ defmodule ItsmBackend.Jobs.JobNotifications do
           "Your request completed successfully."
 
         "denied" ->
-          "A requested operation was denied by policy. Review the job details before submitting another request."
+          denial_message(job)
 
         "failed" ->
           "Your request could not be completed."
       end
 
     agent = safe_metadata(job.selected_agent)
-    tool = safe_metadata(job.proposed_tool)
+    tool = tool_metadata(job.proposed_tool)
 
     details =
       [
@@ -156,6 +156,18 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
     {subject, body}
   end
+
+  defp denial_message(%Job{
+         result: %{"approval_execution" => %{"execution_status" => "rejected"}}
+       }),
+       do: "You rejected the proposed action. No tool was executed."
+
+  defp denial_message(_job),
+    do:
+      "A requested operation was denied by policy. Review the job details before submitting another request."
+
+  defp tool_metadata(%{"tool" => tool}), do: safe_metadata(tool)
+  defp tool_metadata(tool), do: safe_metadata(tool)
 
   defp safe_metadata(value) when is_binary(value) do
     case String.trim(value) do
