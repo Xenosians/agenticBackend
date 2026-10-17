@@ -221,6 +221,41 @@ defmodule ItsmBackendWeb.JobSocketTest do
     assert_reply ref, :error, %{reason: "inactive_attempt"}
   end
 
+  test "AI socket renews only the joined attempt's lease, with the HTTP heartbeat contract",
+       ctx do
+    {:ok, processing} = Job.claim(ctx.job, 30)
+    {:ok, stored} = Jobs.update(processing)
+
+    {:ok, _reply, ai} =
+      subscribe_and_join(internal_socket(), JobProgressChannel, "ai_jobs:#{ctx.job.id}", %{
+        "attempt" => 1
+      })
+
+    ref = push(ai, "renew_lease", %{})
+
+    assert_reply ref, :ok, %{
+      job_id: job_id,
+      attempt: 1,
+      status: "processing",
+      lease_expires_at: renewed
+    }
+
+    assert job_id == ctx.job.id
+    assert DateTime.compare(renewed, stored.lease_expires_at) == :gt
+
+    ref = push(ai, "renew_lease", %{"attempt" => 2})
+    assert_reply ref, :error, %{reason: "invalid_request"}
+
+    {:ok, _} = Jobs.update(%{stored | attempts: 2})
+    ref = push(ai, "renew_lease", %{})
+
+    assert_reply ref, :error, %{
+      error: "stale_attempt",
+      current_attempt: 2,
+      received_attempt: 1
+    }
+  end
+
   test "failed writes do not publish fabricated updates" do
     id = String.duplicate("f", 32)
     :ok = Phoenix.PubSub.subscribe(ItsmBackend.PubSub, Events.topic(id))

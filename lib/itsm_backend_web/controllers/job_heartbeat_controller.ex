@@ -3,13 +3,12 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
 
   use ItsmBackendWeb.RequestContract
 
-  # SRS18_REQUEST_CONTRACT_V1
   request_contract(:heartbeat,
     required_body: ["attempt"]
   )
 
-  alias ItsmBackend.Jobs
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackendWeb.LeaseRenewal
 
   # ------------------------------------------------------------
   # POST heartbeat
@@ -58,78 +57,16 @@ defmodule ItsmBackendWeb.JobHeartbeatController do
        )
        when is_integer(attempt) and
               attempt > 0 do
-    lease_seconds =
-      RuntimeConfig.queue_worker!().lease_seconds
-
-    case Jobs.renew_processing_lease(
-           job_id,
-           attempt,
-           lease_seconds
-         ) do
-      {:ok, job} ->
+    case LeaseRenewal.renew(job_id, attempt) do
+      {:ok, body} ->
         conn
         |> put_status(:ok)
-        |> json(%{
-          job_id: job.id,
-          attempt: job.attempts,
-          status: job.status,
-          lease_expires_at: job.lease_expires_at
-        })
+        |> json(body)
 
-      {:error, :not_found} ->
+      {:error, status, body} ->
         conn
-        |> put_status(:not_found)
-        |> json(%{
-          error: "job_not_found"
-        })
-
-      {:error,
-       {
-         :stale_attempt,
-         current_attempt,
-         received_attempt
-       }} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          error: "stale_attempt",
-          current_attempt: current_attempt,
-          received_attempt: received_attempt
-        })
-
-      {:error,
-       {
-         :job_not_processing,
-         status
-       }} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          error: "job_not_processing",
-          status: status
-        })
-
-      {:error, :lease_expired} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          error: "lease_expired"
-        })
-
-      {:error, :lease_missing} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          error: "lease_missing"
-        })
-
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{
-          error: "heartbeat_failed",
-          reason: inspect(reason)
-        })
+        |> put_status(status)
+        |> json(body)
     end
   end
 

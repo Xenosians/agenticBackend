@@ -6,12 +6,16 @@ defmodule ItsmBackend.Mail do
     * `local` - Swoosh in-process mailbox for development.
     * `brevo_api` - Brevo transactional HTTPS API using a static API key.
     * `gmail_api` - legacy Gmail REST API transport retained as fallback.
+
+  Recipients at the local mailbox lab domain are delivered through the lab's
+  SMTP service (see `ItsmBackend.Mail.LabRelay`) whatever the mode.
   """
 
   import Swoosh.Email
 
   alias ItsmBackend.GmailOAuth
   alias ItsmBackend.Mail.Brevo
+  alias ItsmBackend.Mail.LabRelay
   alias ItsmBackend.Mailer
   alias ItsmBackend.RuntimeConfig
 
@@ -51,11 +55,19 @@ defmodule ItsmBackend.Mail do
     )
   end
 
-  defp deliver_message(to, subject, text_body, html_body, from, "brevo_api") do
+  defp deliver_message(to, subject, text_body, html_body, {from_name, _from_email} = from, mode) do
+    if LabRelay.handles?(to) do
+      LabRelay.deliver(to, subject, text_body, html_body, from_name)
+    else
+      deliver_provider(to, subject, text_body, html_body, from, mode)
+    end
+  end
+
+  defp deliver_provider(to, subject, text_body, html_body, from, "brevo_api") do
     Brevo.deliver(to, subject, text_body, html_body, from)
   end
 
-  defp deliver_message(to, subject_value, text_body_value, html_body_value, from_value, mode) do
+  defp deliver_provider(to, subject_value, text_body_value, html_body_value, from_value, mode) do
     email =
       new()
       |> to(to)

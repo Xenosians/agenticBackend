@@ -93,8 +93,8 @@ defmodule ItsmBackend.AIClient.Mock do
      %{
        "integrations" => [
          %{
-           "id" => "palo_alto",
-           "name" => "Palo Alto Networks PAN-OS",
+           "id" => "openwrt",
+           "name" => "OpenWrt",
            "configured" => false,
            "host" => nil,
            "verify_tls" => true,

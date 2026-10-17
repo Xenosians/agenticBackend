@@ -70,6 +70,9 @@ defmodule ItsmBackendWeb.Router do
 
     post "/internal/v1/provisioned-mailboxes", ProvisionedMailboxController, :create
 
+    # Approved password reset -> encrypted temporary credential.
+    post "/internal/v1/directory-credentials", DirectoryCredentialController, :create
+
     post "/internal/v1/jobs/:id/heartbeat",
          JobHeartbeatController,
          :heartbeat

@@ -32,7 +32,7 @@ defmodule ItsmBackend.Mail.OutboxWorker do
   @impl true
   def handle_info(:poll, state) do
     delay =
-      case OutboxStore.claim_next(state.lease_seconds) do
+      case claim_next(state.lease_seconds) do
         {:ok, nil} ->
           state.poll_interval_ms
 
@@ -47,6 +47,13 @@ defmodule ItsmBackend.Mail.OutboxWorker do
 
     Process.send_after(self(), :poll, delay)
     {:noreply, state}
+  end
+
+  # A storage hiccup must not crash the worker: log it and poll again later.
+  defp claim_next(lease_seconds) do
+    OutboxStore.claim_next(lease_seconds)
+  rescue
+    error -> {:error, {:claim_raised, Exception.message(error)}}
   end
 
   defp deliver_claimed(message, max_attempts) do

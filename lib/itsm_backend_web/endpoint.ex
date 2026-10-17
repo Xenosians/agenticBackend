@@ -10,8 +10,8 @@ defmodule ItsmBackendWeb.Endpoint do
   ]
 
   socket "/socket", ItsmBackendWeb.UserSocket,
+    auth_token: true,
     websocket: [
-      auth_token: true,
       check_origin: {ItsmBackendWeb.SocketAuth, :origin_allowed?, []}
     ],
     longpoll: false

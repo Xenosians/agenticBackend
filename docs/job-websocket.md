@@ -5,7 +5,7 @@ The browser receives job invalidations over a read-only Phoenix channel. It fetc
 ## Browser connection
 
 1. `POST /api/v2/jobs/socket-token` with the current session cookie and `X-CSRF-Token`, or existing bearer authentication. The response is `{token, expires_in: 120}` with `Cache-Control: no-store`.
-2. Connect to `/socket/websocket?vsn=2.0.0`. Supply WebSocket subprotocols `phoenix` and `base64url.bearer.phx.<base64-without-padding-of-token>`, as supported by the installed Phoenix client. Never put the ticket, session cookie, or CSRF value in the URL.
+2. Connect to `/socket/websocket?vsn=2.0.0`. Supply WebSocket subprotocols `phoenix` and `base64url.bearer.phx.<standard-base64-without-padding-of-token>`, matching the installed Phoenix client and decoder. Despite the protocol prefix, do not replace `+` or `/` with URL-safe characters. The endpoint enables `auth_token: true` on the socket itself. Never put the ticket, session cookie, or CSRF value in the URL.
 3. Join `job:<job_id>` with an empty payload using the Phoenix v2 protocol. The join response and `job_updated` event contain only `{job_id, status, attempts}`. Status uses the v2 job lifecycle.
 4. Refresh the authorized REST job snapshot on join, update, and reconnect. Obtain a fresh short-lived ticket for a new connection. Use a Phoenix heartbeat while connected.
 
@@ -14,6 +14,8 @@ The channel revalidates the persisted session and the same ownership rules as RE
 ## AI progress connection
 
 The AI service connects to `/ai_socket/websocket?vsn=2.0.0` with the existing `X-Internal-Token` request header. This credential must never be a URL parameter. It joins `ai_jobs:<job_id>` with `{attempt: positive_integer}` and sends the `progress` event with only `{stage: value}`. Allowed stage values are `routing`, `planning`, `executing`, `synthesizing`, and `waiting_provider`.
+
+The same joined channel carries the AI's lease heartbeat, a two-way request/reply. `renew_lease` with an empty payload renews the joined attempt's processing lease and replies with the HTTP heartbeat contract: `{job_id, attempt, status, lease_expires_at}`, or an error body (`stale_attempt`, `job_not_processing`, `lease_expired`, `lease_missing`, `job_not_found`). The AI sends it every heartbeat interval while joined. When the socket is not joined or does not reply within 10 seconds, it uses `POST /api/internal/v1/jobs/:id/heartbeat` instead. A refusal on either transport ends that attempt's heartbeat.
 
 Both join and each progress message verify that the durable job is processing the exact attempt and its processing lease has not expired. The public job channel rechecks that binding and owner session before delivering `job_progress: {job_id, attempt, stage}`. Progress is an ephemeral activity hint and never changes the job status or proves a tool executed. Freeform text, extra properties, completion commands, stale attempts, and terminal jobs are refused. The existing HTTP completion callback/outbox remains the durable completion mechanism.
 

@@ -15,7 +15,10 @@ config :itsm_backend, ItsmBackendWeb.Endpoint,
     port: 4000
   ],
   check_origin: false,
-  code_reloader: true,
+  # A long-running lab server without a file watcher sets
+  # PHX_CODE_RELOADER=false: the reloader rescans the source tree on every
+  # request, which is slow on a mounted Windows drive.
+  code_reloader: System.get_env("PHX_CODE_RELOADER", "true") != "false",
   debug_errors: true,
   secret_key_base: "ucP/Y1R0Cryu9mcyo9b6IIOACMt9/Ect5QePUfHazR2vAv0FJA0sRGHudI8WeKTX",
   watchers: []

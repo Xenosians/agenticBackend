@@ -27,6 +27,15 @@ defmodule ItsmBackendWeb.AuthRequest do
          |> json(%{error: "csrf_failed"})
          |> halt()}
 
+      # The session could not be checked because storage failed. That says
+      # nothing about the user's credentials: answer with a retryable 503
+      # instead of a 401 that would sign a valid user out.
+      {:error, {:surreal_request_failed, _reason}} ->
+        storage_unavailable(conn)
+
+      {:error, {:surreal_http_error, status, _body}} when status >= 500 ->
+        storage_unavailable(conn)
+
       _ ->
         {:error,
          conn
@@ -34,6 +43,15 @@ defmodule ItsmBackendWeb.AuthRequest do
          |> json(%{error: "authentication_required"})
          |> halt()}
     end
+  end
+
+  defp storage_unavailable(conn) do
+    {:error,
+     conn
+     |> put_resp_header("retry-after", "2")
+     |> put_status(:service_unavailable)
+     |> json(%{error: "storage_unavailable"})
+     |> halt()}
   end
 
   defp session_token(conn) do

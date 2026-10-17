@@ -61,10 +61,11 @@ defmodule Mix.Tasks.Itsm.Mailer.Preflight do
   end
 
   defp send_test(recipient, mode) do
-    subject = "Agentic ITSM mailer preflight"
+    product = ItsmBackend.RuntimeConfig.auth!().mail_from_name
+    subject = "#{product} mailer preflight"
 
     body = """
-    This is an isolated outbound-mail preflight from Agentic ITSM.
+    This is an isolated outbound-mail preflight from #{product}.
 
     Configured transport: #{mode}
 

@@ -10,6 +10,8 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - User-owned chats, history, and durable AI jobs.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
+- Authenticated WebSocket status updates for the browser and bounded progress events from the AI runtime, with REST recovery after reconnect.
+- A durable account → Jira ticket workflow with separately bound approvals, verified provider results, and completion notifications through the existing mail outbox.
 - Authenticated model/harness/dataset commands proxied to the AI service; ownership comes from the session and mutations require CSRF.
 - Backend/AI health and integration status endpoints.
 - Local development mail, Brevo HTTPS API or Gmail OAuth2 delivery, plus a durable mail outbox.
@@ -107,7 +109,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 ## Current boundaries
 
 - The queue worker tracks one in-flight job per process; this is not a complete distributed worker platform.
-- Browser lifecycle updates use polling. Unknown execution outcomes require reconciliation instead of automatic mutation retries.
+- WebSocket updates are notifications; authenticated REST reads and durable storage remain authoritative. Unknown execution outcomes require reconciliation instead of automatic mutation retries.
 - Ownership/session checks are implemented; broad enterprise RBAC/ABAC remains incomplete.
 - Model and dataset extensions are implemented in the AI service. They do not replace SurrealDB or grant new tool authority.
 - Reference retrieval currently uses local full-text search. n8n/workflow support is manifest validation only, with no runner or webhook registration.
@@ -121,5 +123,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - [Runtime configuration](config/runtime.exs)
 - [Database schema](priv/surreal/schema.surql)
 - [Job lifecycle and worker](lib/itsm_backend/jobs)
+- [Browser and AI WebSocket protocol](docs/job-websocket.md)
+- [Dependent approval validation](lib/itsm_backend/jobs/workflow_continuation.ex)
 - [Extension proxy](lib/itsm_backend_web/controllers/extension_controller.ex)
 - [Development guidelines](AGENTS.md)

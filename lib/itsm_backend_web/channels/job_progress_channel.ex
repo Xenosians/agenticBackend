@@ -1,9 +1,13 @@
 defmodule ItsmBackendWeb.JobProgressChannel do
-  @moduledoc "Ephemeral AI progress hints; durable job decisions stay on the HTTP protocol."
+  @moduledoc """
+  The AI's channel for one processing attempt: ephemeral progress hints and the
+  two-way lease heartbeat. Completion stays on the durable HTTP callback/outbox.
+  """
   use ItsmBackendWeb, :channel
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.Events
+  alias ItsmBackendWeb.LeaseRenewal
 
   @stages ~w(routing planning executing synthesizing waiting_provider)
 
@@ -37,6 +41,17 @@ defmodule ItsmBackendWeb.JobProgressChannel do
 
       _ ->
         {:reply, {:error, %{reason: "inactive_attempt"}}, socket}
+    end
+  end
+
+  # Renews only the joined attempt. The reply is the HTTP heartbeat contract,
+  # and the HTTP heartbeat remains the AI's fallback transport.
+  def handle_in("renew_lease", payload, socket) when map_size(payload) == 0 do
+    %{job_id: job_id, attempt: attempt} = socket.assigns
+
+    case LeaseRenewal.renew(job_id, attempt) do
+      {:ok, body} -> {:reply, {:ok, body}, socket}
+      {:error, _status, body} -> {:reply, {:error, body}, socket}
     end
   end
 

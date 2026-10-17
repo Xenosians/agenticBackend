@@ -26,7 +26,8 @@ defmodule ItsmBackend.Jobs.JobNotificationsTest do
     assert first["dedupe_key"] == "job:#{job.id}:1:completed"
     assert {:ok, second} = JobNotifications.enqueue(completed)
     assert first["outbox_id"] == second["outbox_id"]
-    assert first["subject"] == "Agentic ITSM — request completed"
+    product = ItsmBackend.RuntimeConfig.auth!().mail_from_name
+    assert first["subject"] == "#{product} — request completed"
     assert first["text_body"] =~ "Tool: workspace_mkdir"
     refute first["text_body"] =~ "private-model-output"
     refute first["text_body"] =~ job.message

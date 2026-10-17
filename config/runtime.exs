@@ -377,7 +377,7 @@ mail_from_email =
   System.get_env("MAIL_FROM_EMAIL") ||
     if(config_env() == :prod, do: nil, else: "no-reply@itsm.local")
 
-mail_from_name = System.get_env("MAIL_FROM_NAME") || "Agentic ITSM"
+mail_from_name = System.get_env("MAIL_FROM_NAME") || "Janus"
 
 admin_emails =
   (System.get_env("AUTH_ADMIN_EMAILS") || "")
@@ -525,6 +525,21 @@ end
 # ------------------------------------------------------------
 
 config :itsm_backend, :mailbox_lab_domain, System.get_env("MAILBOX_LAB_DOMAIN") || "itsm.test"
+
+# Application mail to lab addresses goes through the lab's SMTP submission
+# service, authenticated as a lab sender account. Disabled unless both the
+# sender address (at the lab domain) and its password are configured.
+lab_mail_sender = System.get_env("LAB_MAIL_SENDER")
+lab_mail_password = System.get_env("LAB_MAIL_PASSWORD")
+
+config :itsm_backend, :lab_mail,
+  enabled: config_env() != :prod and is_binary(lab_mail_sender) and is_binary(lab_mail_password),
+  sender: lab_mail_sender,
+  password: lab_mail_password,
+  host: System.get_env("LAB_MAIL_SMTP_HOST") || "127.0.0.1",
+  port:
+    (System.get_env("LAB_MAIL_SMTP_PORT") || "1587")
+    |> then(fn value -> parse_positive_integer_env.("LAB_MAIL_SMTP_PORT", value) end)
 
 # ------------------------------------------------------------
 # Production endpoint

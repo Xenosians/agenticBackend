@@ -82,7 +82,7 @@ defmodule ItsmBackend.Mail.Brevo do
     with {:ok, email} <- normalize_email(email) do
       name =
         case String.trim(name) do
-          "" -> "Agentic ITSM"
+          "" -> "Janus"
           value -> value
         end
 

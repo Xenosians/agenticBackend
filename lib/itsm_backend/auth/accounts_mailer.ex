@@ -10,7 +10,7 @@ defmodule ItsmBackend.Auth.AccountsMailer do
 
     Mail.deliver_text(
       {user["display_name"], user["email"]},
-      "Verify your Agentic ITSM account",
+      "Verify your #{config.mail_from_name} account",
       "Verify your account using this link:\n\n#{url}\n\nThis link expires automatically."
     )
   end
@@ -21,7 +21,7 @@ defmodule ItsmBackend.Auth.AccountsMailer do
 
     Mail.deliver_text(
       {user["display_name"], user["email"]},
-      "Reset your Agentic ITSM password",
+      "Reset your #{config.mail_from_name} password",
       "Reset your password using this link:\n\n#{url}\n\nIf you did not request this, ignore this email."
     )
   end

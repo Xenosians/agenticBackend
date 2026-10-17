@@ -11,6 +11,7 @@ defmodule ItsmBackend.Surreal do
   """
 
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackend.Surreal.Session
 
   @spec query(String.t(), map()) ::
           {:ok, list()}
@@ -38,28 +39,7 @@ defmodule ItsmBackend.Surreal do
       ]
     }
 
-    case Req.post(
-           "#{config.url}/rpc",
-           headers: [
-             {
-               "surreal-ns",
-               config.namespace
-             },
-             {
-               "surreal-db",
-               config.database
-             },
-             {
-               "accept",
-               "application/json"
-             }
-           ],
-           auth: {
-             :basic,
-             "#{config.username}:#{config.password}"
-           },
-           json: payload
-         ) do
+    case rpc(config, payload) do
       {:ok,
        %{
          status: status,
@@ -90,6 +70,49 @@ defmodule ItsmBackend.Surreal do
            reason
          }}
     end
+  end
+
+  # Bearer token first; a rejected token is renewed once, then the request
+  # falls back to basic auth so availability never depends on the token.
+  defp rpc(config, payload) do
+    auth = Session.auth(config)
+
+    case post_rpc(config, payload, auth) do
+      {:ok, %{status: 401}} when elem(auth, 0) == :bearer ->
+        Session.invalidate()
+        post_rpc(config, payload, Session.auth(config))
+
+      response ->
+        response
+    end
+  end
+
+  defp post_rpc(config, payload, auth) do
+    post_rpc(
+      "#{config.url}/rpc",
+      headers: [
+        {"surreal-ns", config.namespace},
+        {"surreal-db", config.database},
+        {"accept", "application/json"}
+      ],
+      auth: auth,
+      json: payload
+    )
+  end
+
+  # Finch raises instead of returning when every pooled connection is busy
+  # (for example while the database is stalled). Report that as a request
+  # failure so callers degrade the same way as for a timeout, instead of
+  # crashing the calling process.
+  defp post_rpc(url, options) do
+    Req.post(url, options)
+  rescue
+    error in RuntimeError ->
+      if String.contains?(Exception.message(error), "unable to provide a connection") do
+        {:error, :connection_pool_exhausted}
+      else
+        reraise error, __STACKTRACE__
+      end
   end
 
   # ------------------------------------------------------------

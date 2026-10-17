@@ -93,23 +93,16 @@ defmodule ItsmBackend.Jobs.JobNotifications do
   defp render(%Job{} = job) do
     config = RuntimeConfig.auth!()
 
-    subject =
+    event =
       case job.status do
-        "waiting_approval" ->
-          "Agentic ITSM — approval required"
-
-        status when status in ["reconciliation_required", "outcome_unknown"] ->
-          "Agentic ITSM — reconciliation required"
-
-        "completed" ->
-          "Agentic ITSM — request completed"
-
-        "denied" ->
-          "Agentic ITSM - request denied"
-
-        "failed" ->
-          "Agentic ITSM — request failed"
+        "waiting_approval" -> "approval required"
+        status when status in ["reconciliation_required", "outcome_unknown"] -> "reconciliation required"
+        "completed" -> "request completed"
+        "denied" -> "request denied"
+        "failed" -> "request failed"
       end
+
+    subject = "#{config.mail_from_name} — #{event}"
 
     status_text =
       case job.status do
@@ -148,7 +141,7 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
     #{details}
 
-    Open Agentic ITSM:
+    Open #{config.mail_from_name}:
     #{config.frontend_base_url}
 
     This notification was generated from durable backend job state.
