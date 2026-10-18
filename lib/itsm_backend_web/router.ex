@@ -70,6 +70,9 @@ defmodule ItsmBackendWeb.Router do
 
     post "/internal/v1/provisioned-mailboxes", ProvisionedMailboxController, :create
 
+    # Approved AI notification -> durable mail outbox (queued, not delivered).
+    post "/internal/v1/notifications", UserNotificationController, :create
+
     # Approved password reset -> encrypted temporary credential.
     post "/internal/v1/directory-credentials", DirectoryCredentialController, :create
 

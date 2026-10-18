@@ -221,6 +221,17 @@ defmodule ItsmBackend.Auth do
 
   def reset_password(_, _), do: {:error, :invalid_request}
 
+  @doc """
+  The registered user for an email address, or nil when none exists.
+  Read only; it never creates, verifies or changes an identity.
+  """
+  @spec find_user_by_email(term()) :: {:ok, map() | nil} | {:error, term()}
+  def find_user_by_email(email_input) do
+    with {:ok, email} <- normalize_email(email_input) do
+      SurrealStore.find_user_by_email_key(email_key(email))
+    end
+  end
+
   def public_user(user) when is_map(user) do
     %{
       "user_id" => user["user_id"],
