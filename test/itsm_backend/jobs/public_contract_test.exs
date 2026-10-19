@@ -73,6 +73,37 @@ defmodule ItsmBackend.Jobs.PublicContractTest do
              PublicContract.validate_create_request("invalid")
   end
 
+  test "accepts a pinned submission UUID and rejects malformed identities" do
+    payload = %{
+      "chat_id" => "chat-123",
+      "message" => "Check status",
+      "submission_id" => ItsmBackend.SubmissionTestSupport.identity()
+    }
+
+    assert {:ok, ^payload} = PublicContract.validate_create_request(payload)
+
+    for identity <- ["", "not-a-uuid", 123, nil] do
+      assert {:error, {:invalid_job_create_request, :contract_violation, _}} =
+               PublicContract.validate_create_request(%{payload | "submission_id" => identity})
+    end
+  end
+
+  test "a recovered submission acknowledges its current state and exact identity" do
+    identity = ItsmBackend.SubmissionTestSupport.identity()
+
+    for status <- [
+          "processing",
+          "waiting_approval",
+          "completed",
+          "failed",
+          "denied",
+          "outcome_unknown"
+        ] do
+      assert {:ok, %{"job_id" => "job-123", "status" => ^status, "submission_id" => ^identity}} =
+               PublicContract.build_create_response("job-123", status, identity)
+    end
+  end
+
   test "builds canonical pending create response" do
     assert {:ok,
             %{

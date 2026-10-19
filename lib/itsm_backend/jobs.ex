@@ -35,9 +35,17 @@ defmodule ItsmBackend.Jobs do
     with {:ok, job} <-
            Job.new(attrs),
          {:ok, stored_job} <-
-           SurrealStore.create(job) do
+           persist_submission(job, attrs) do
       Events.publish(stored_job)
       {:ok, stored_job}
+    end
+  end
+
+  defp persist_submission(job, attrs) do
+    if Map.get(attrs, :submission_id, Map.get(attrs, "submission_id")) do
+      SurrealStore.create_idempotent(job)
+    else
+      SurrealStore.create(job)
     end
   end
 

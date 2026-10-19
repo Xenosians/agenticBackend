@@ -41,6 +41,21 @@ defmodule ItsmBackendWeb.JobSocketTest do
     assert :error = connect(UserSocket, %{}, connect_info: %{auth_token: expired})
   end
 
+  test "a job created from a client submission identity can be observed live", %{identity: id} do
+    {:ok, job} =
+      Jobs.create(%{
+        user_id: id.user["user_id"],
+        conversation_id: id.chat["chat_id"],
+        message: "private request body",
+        submission_id: ItsmBackend.SubmissionTestSupport.identity()
+      })
+
+    assert {:ok, %{job_id: job_id, status: "pending"}, _joined} =
+             subscribe_and_join(user_socket(id), JobChannel, "job:#{job.id}")
+
+    assert job_id == job.id
+  end
+
   test "revoked session cannot connect with an otherwise valid ticket", %{identity: id} do
     ticket = SocketAuth.issue(id.user, id.auth.session)
     assert {:ok, _} = Auth.revoke_session(id.user["user_id"], id.auth.session["session_id"])

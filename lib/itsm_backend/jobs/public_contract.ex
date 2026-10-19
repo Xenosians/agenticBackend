@@ -57,18 +57,25 @@ defmodule ItsmBackend.Jobs.PublicContract do
 
   @spec build_create_response(
           term(),
+          term(),
           term()
         ) ::
           {:ok, map()}
           | {:error, term()}
   def build_create_response(
         job_id,
-        status
+        status,
+        submission_id \\ nil
       ) do
     payload = %{
       "job_id" => job_id,
-      "status" => status
+      "status" => Lifecycle.wire_status(status, 2)
     }
+
+    payload =
+      if is_nil(submission_id),
+        do: payload,
+        else: Map.put(payload, "submission_id", submission_id)
 
     case Contracts.validate(
            :job_create_response,

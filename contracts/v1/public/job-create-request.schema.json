@@ -7,7 +7,12 @@
   "required": ["chat_id", "message"],
   "properties": {
     "chat_id": {"type": "string", "minLength": 1},
-    "message": {"type": "string", "minLength": 1}
+    "message": {"type": "string", "minLength": 1},
+    "submission_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Optional client-generated UUID pinned before sending. Reusing it under the same owner returns the original job only when chat and message match."
+    }
   },
   "additionalProperties": false
 }

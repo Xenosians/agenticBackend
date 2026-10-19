@@ -447,6 +447,32 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     end
   end
 
+  @doc "Creates one submission atomically, or verifies the existing immutable request binding."
+  def create_idempotent(%Job{} = requested) do
+    case create(requested) do
+      {:ok, stored} ->
+        {:ok, stored}
+
+      {:error, create_error} ->
+        # CREATE on a deterministic record ID is the uniqueness boundary.
+        # Never UPSERT: replay must not reset attempts, results or approvals.
+        # A failed write response can also mean the write already committed.
+        case get(requested.id) do
+          {:ok, stored} ->
+            if stored.user_id == requested.user_id and
+                 stored.conversation_id == requested.conversation_id and
+                 stored.message == requested.message do
+              {:ok, stored}
+            else
+              {:error, :submission_conflict}
+            end
+
+          {:error, _read_error} ->
+            {:error, {:submission_outcome_unknown, create_error}}
+        end
+    end
+  end
+
   # ------------------------------------------------------------
   # Get
   # ------------------------------------------------------------

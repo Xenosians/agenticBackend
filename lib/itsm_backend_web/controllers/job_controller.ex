@@ -43,9 +43,11 @@ defmodule ItsmBackendWeb.JobController do
            Jobs.create(%{
              "user_id" => user["user_id"],
              "conversation_id" => chat["chat_id"],
-             "message" => payload["message"]
+             "message" => payload["message"],
+             "submission_id" => payload["submission_id"]
            }),
-         {:ok, response} <- PublicContract.build_create_response(job.id, job.status) do
+         {:ok, response} <-
+           PublicContract.build_create_response(job.id, job.status, payload["submission_id"]) do
       conn
       |> put_status(:accepted)
       |> json(response)
@@ -58,6 +60,23 @@ defmodule ItsmBackendWeb.JobController do
 
       {:error, {:invalid_job_create_request, _, _}} ->
         conn |> put_status(:unprocessable_entity) |> json(%{error: "invalid_request"})
+
+      {:error, :submission_conflict} ->
+        PublicError.render(
+          conn,
+          :conflict,
+          "submission_conflict",
+          "This submission identity already belongs to a different chat or message. Reopen the original chat to check its saved job."
+        )
+
+      {:error, {:submission_outcome_unknown, _reason}} ->
+        PublicError.render(
+          conn,
+          :service_unavailable,
+          "submission_outcome_unknown",
+          "The saved submission could not be confirmed. Retry only with the same submission identity.",
+          retryable: true
+        )
 
       {:error, reason} ->
         Logger.error("job creation failed: #{inspect(reason)}")

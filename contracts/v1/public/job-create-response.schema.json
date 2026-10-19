@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:agentic-itsm:contracts:v1:public:job-create-response",
   "title": "Create Job Response",
-  "description": "Public acknowledgement returned after Phoenix durably creates a new AI job.",
+  "description": "Acknowledges a newly created job or the current state of the same durable submission after recovery.",
   "type": "object",
   "required": [
     "job_id",
@@ -15,9 +15,17 @@
       "description": "Phoenix-owned durable job identifier."
     },
     "status": {
-      "const": "pending",
-      "description": "A newly created durable job begins in the pending state."
+      "enum": ["pending", "processing", "waiting_approval", "completed", "failed", "denied", "outcome_unknown"],
+      "description": "New jobs begin pending. A recovered submission reports its existing state without resetting execution."
+    },
+    "submission_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     }
   },
+  "anyOf": [
+    {"required": ["submission_id"]},
+    {"properties": {"status": {"const": "pending"}}}
+  ],
   "additionalProperties": false
 }

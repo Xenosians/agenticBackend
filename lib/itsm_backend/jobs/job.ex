@@ -77,12 +77,13 @@ defmodule ItsmBackend.Jobs.Job do
            optional_string(
              attrs,
              :conversation_id
-           ) do
+           ),
+         {:ok, submission_id} <- optional_submission_id(attrs) do
       now = now()
 
       {:ok,
        %__MODULE__{
-         id: generate_id(),
+         id: submission_job_id(user_id, submission_id),
          user_id: user_id,
          conversation_id: conversation_id,
          message: message,
@@ -439,6 +440,37 @@ defmodule ItsmBackend.Jobs.Job do
   # ------------------------------------------------------------
   # Helpers
   # ------------------------------------------------------------
+
+  defp optional_submission_id(attrs) do
+    case fetch_value(attrs, :submission_id) do
+      nil ->
+        {:ok, nil}
+
+      value when is_binary(value) ->
+        if Regex.match?(
+             ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/,
+             value
+           ),
+           do: {:ok, value},
+           else: {:error, {:invalid_field, :submission_id}}
+
+      _ ->
+        {:error, {:invalid_field, :submission_id}}
+    end
+  end
+
+  defp submission_job_id(_owner, nil), do: generate_id()
+
+  defp submission_job_id(owner, submission_id) do
+    # Length-delimited JSON prevents ambiguous concatenation. The owner is
+    # supplied by authenticated server context, never the browser payload.
+    # The id keeps the 32-hex shape every job has, which the job channels
+    # and the AI progress socket require (128 bits of the domain-separated
+    # SHA-256 digest).
+    :crypto.hash(:sha256, Jason.encode!(["job-submission-v1", owner, submission_id]))
+    |> binary_part(0, 16)
+    |> Base.encode16(case: :lower)
+  end
 
   defp generate_id do
     16
