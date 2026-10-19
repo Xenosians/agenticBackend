@@ -139,6 +139,31 @@ defmodule ItsmBackend.Auth do
     SurrealStore.revoke_session(session_id, user_id, now())
   end
 
+  @doc """
+  Ends a session and confirms it can no longer authenticate.
+
+  `:ok` means the session is revoked, now or earlier. Any other result means
+  the session may still be valid and must not be reported as ended.
+  """
+  @spec end_session(String.t(), String.t()) :: :ok | {:error, term()}
+  def end_session(user_id, session_id) do
+    case SurrealStore.revoke_session(session_id, user_id, now()) do
+      {:ok, revoked} when is_map(revoked) -> :ok
+      {:ok, nil} -> confirm_session_ended(user_id, session_id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The conditional revoke matched nothing. Confirm that is because the session
+  # is no longer active, not because the write was lost.
+  defp confirm_session_ended(user_id, session_id) do
+    case SurrealStore.find_active_session(session_id, user_id, now()) do
+      {:ok, nil} -> :ok
+      {:ok, _still_active} -> {:error, :session_still_active}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def verify_email(raw_token) when is_binary(raw_token) do
     with {:ok, token} <- valid_token(raw_token, "verify_email"),
          {:ok, user} <-

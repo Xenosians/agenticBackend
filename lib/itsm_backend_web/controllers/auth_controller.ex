@@ -30,10 +30,13 @@ defmodule ItsmBackendWeb.AuthController do
     required_body: ["token", "new_password"]
   )
 
+  require Logger
+
   alias ItsmBackend.Auth
   alias ItsmBackend.Auth.AccountsMailer
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
+  alias ItsmBackendWeb.PublicError
 
   def register(conn, params) do
     case Auth.register(params) do
@@ -134,12 +137,31 @@ defmodule ItsmBackendWeb.AuthController do
   def logout(conn, _params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
       {:ok, conn, ctx} ->
-        _ = Auth.revoke_session(ctx.user["user_id"], ctx.session["session_id"])
-        config = RuntimeConfig.auth!()
+        case Auth.end_session(ctx.user["user_id"], ctx.session["session_id"]) do
+          :ok ->
+            config = RuntimeConfig.auth!()
 
-        conn
-        |> delete_resp_cookie(config.cookie_name, path: "/")
-        |> json(%{status: "logged_out"})
+            conn
+            |> delete_resp_cookie(config.cookie_name, path: "/")
+            |> json(%{status: "logged_out"})
+
+          # The session may still be valid on the server. The cookie stays, so
+          # this browser can retry; clearing it would only hide a live session.
+          {:error, reason} ->
+            Logger.error(
+              "logout could not end session_id=#{ctx.session["session_id"]}: " <>
+                inspect(reason, limit: 20)
+            )
+
+            conn
+            |> put_resp_header("retry-after", "2")
+            |> PublicError.render(
+              :service_unavailable,
+              "logout_unconfirmed",
+              "The session could not be ended on the server. Try signing out again.",
+              retryable: true
+            )
+        end
 
       {:error, conn} ->
         conn
