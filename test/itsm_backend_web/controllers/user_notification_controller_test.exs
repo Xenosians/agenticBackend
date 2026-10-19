@@ -3,6 +3,7 @@ defmodule ItsmBackendWeb.UserNotificationControllerTest do
 
   alias ItsmBackend.Auth
   alias ItsmBackend.Mail.OutboxStore
+  alias ItsmBackend.Surreal
   alias ItsmBackendWeb.AuthTestSupport
 
   @internal_token "notification-private-internal-token"
@@ -49,7 +50,13 @@ defmodule ItsmBackendWeb.UserNotificationControllerTest do
       |> Map.put("subject", "Maintenance update")
 
     result = conn |> post_notification(payload) |> json_response(202)
-    assert result == %{"queued" => true, "outbox_id" => outbox_id(payload)}
+
+    assert result == %{
+             "queued" => true,
+             "outbox_id" => outbox_id(payload),
+             "delivery_status" => "pending",
+             "reconciliation_required" => false
+           }
 
     assert {:ok, stored} = OutboxStore.get(result["outbox_id"])
     assert stored["kind"] == "user_notification"
@@ -108,6 +115,50 @@ defmodule ItsmBackendWeb.UserNotificationControllerTest do
 
     for rejected <- [unknown, pending] do
       assert {:error, :not_found} = OutboxStore.get(outbox_id(rejected))
+    end
+  end
+
+  test "duplicate requests report sent, failed, processing and uncertain states truthfully", %{
+    user: user
+  } do
+    for {state, http_status, reconciliation?} <- [
+          {"processing", 202, false},
+          {"sent", 200, false},
+          {"dead", 409, false},
+          {"outcome_unknown", 409, true}
+        ] do
+      payload = payload(user["email"])
+      first = build_conn() |> post_notification(payload) |> json_response(202)
+
+      assert {:ok, _} =
+               Surreal.query(
+                 """
+                 UPDATE ONLY type::record('mail_outbox', $id) SET status = $status;
+                 """,
+                 %{"id" => first["outbox_id"], "status" => state}
+               )
+
+      duplicate = build_conn() |> post_notification(payload) |> json_response(http_status)
+
+      expected = %{
+        "outbox_id" => first["outbox_id"],
+        "queued" => false,
+        "delivery_status" => state,
+        "reconciliation_required" => reconciliation?
+      }
+
+      expected =
+        case state do
+          "dead" -> Map.put(expected, "error", "notification_delivery_failed")
+          "outcome_unknown" -> Map.put(expected, "error", "notification_delivery_unknown")
+          _ -> expected
+        end
+
+      assert duplicate == expected
+
+      assert {:ok, stored} = OutboxStore.get(first["outbox_id"])
+      assert stored["status"] == state
+      assert stored["attempts"] == 0
     end
   end
 

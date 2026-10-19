@@ -99,28 +99,30 @@ defmodule ItsmBackend.Mail.OutboxStore do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
     lease_expires_at = DateTime.add(now, lease_seconds, :second)
 
+    # A crashed sender may have reached the provider. Lease expiry is evidence
+    # of uncertainty, never permission to send the message again.
+    with :ok <- reconcile_expired_processing(now) do
+      claim_pending(now, lease_expires_at)
+    end
+  end
+
+  defp claim_pending(now, lease_expires_at) do
     statement = """
     UPDATE (
       SELECT id, created_at
       FROM mail_outbox
       WHERE
-        (
-          status = "pending"
-          AND next_attempt_at <= $now
-        )
-        OR
-        (
-          status = "processing"
-          AND lease_expires_at <= $now
-        )
+        status = "pending"
+        AND next_attempt_at <= <datetime>$now
       ORDER BY created_at ASC
       LIMIT 1
     )
     SET
       status = "processing",
       attempts = attempts + 1,
-      claimed_at = $now,
-      lease_expires_at = $lease_expires_at
+      claimed_at = <datetime>$now,
+      lease_expires_at = <datetime>$lease_expires_at
+    WHERE status = "pending" AND next_attempt_at <= <datetime>$now
     RETURN AFTER;
     """
 
@@ -143,16 +145,33 @@ defmodule ItsmBackend.Mail.OutboxStore do
     end
   end
 
-  @spec mark_sent(String.t()) :: :ok | {:error, term()}
-  def mark_sent(id) when is_binary(id) do
+  @doc "Quarantines interrupted sends. No provider call or resend is performed."
+  def reconcile_expired_processing(now \\ DateTime.utc_now()) do
+    statement = """
+    UPDATE mail_outbox
+    SET status = "outcome_unknown",
+        lease_expires_at = NONE,
+        last_error = "Mail delivery was interrupted. Reconcile provider receipt before another send."
+    WHERE status = "processing" AND lease_expires_at <= <datetime>$now
+    RETURN AFTER;
+    """
+
+    with {:ok, response} <- Surreal.query(statement, %{"now" => DateTime.to_iso8601(now)}),
+         {:ok, _records} <- extract_result(response) do
+      :ok
+    end
+  end
+
+  @spec mark_sent(String.t(), pos_integer()) :: :ok | {:error, term()}
+  def mark_sent(id, attempt) when is_binary(id) and is_integer(attempt) and attempt > 0 do
     statement = """
     UPDATE ONLY type::record($table, $id)
     SET
       status = "sent",
-      sent_at = $sent_at,
+      sent_at = <datetime>$sent_at,
       lease_expires_at = NONE,
       last_error = NONE
-    WHERE status = "processing"
+    WHERE status = "processing" AND attempts = $attempt
     RETURN AFTER;
     """
 
@@ -161,6 +180,7 @@ defmodule ItsmBackend.Mail.OutboxStore do
       %{
         "table" => @table,
         "id" => id,
+        "attempt" => attempt,
         "sent_at" => now_iso()
       }
     )
@@ -190,10 +210,10 @@ defmodule ItsmBackend.Mail.OutboxStore do
     UPDATE ONLY type::record($table, $id)
     SET
       status = $status,
-      next_attempt_at = $next_attempt_at,
+      next_attempt_at = <datetime>$next_attempt_at,
       lease_expires_at = NONE,
       last_error = $last_error
-    WHERE status = "processing"
+    WHERE status = "processing" AND attempts = $attempt
     RETURN AFTER;
     """
 
@@ -202,11 +222,32 @@ defmodule ItsmBackend.Mail.OutboxStore do
       %{
         "table" => @table,
         "id" => id,
+        "attempt" => attempts,
         "status" => status,
         "next_attempt_at" => next_attempt_at,
         "last_error" => String.slice(error, 0, 1_000)
       }
     )
+  end
+
+  @doc "Records a non-retryable rejection or an ambiguous delivery for this exact claim."
+  def stop_delivery(id, attempt, status, error)
+      when is_binary(id) and is_integer(attempt) and attempt > 0 and
+             status in ["dead", "outcome_unknown"] and is_binary(error) do
+    statement = """
+    UPDATE ONLY type::record($table, $id)
+    SET status = $status, lease_expires_at = NONE, last_error = $last_error
+    WHERE status = "processing" AND attempts = $attempt
+    RETURN AFTER;
+    """
+
+    mutate_one(statement, %{
+      "table" => @table,
+      "id" => id,
+      "attempt" => attempt,
+      "status" => status,
+      "last_error" => String.slice(error, 0, 1_000)
+    })
   end
 
   defp mutate_one(statement, params) do

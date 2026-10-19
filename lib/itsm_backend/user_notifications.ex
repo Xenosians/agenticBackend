@@ -4,8 +4,9 @@ defmodule ItsmBackend.UserNotifications do
 
   The recipient must be an active, verified application user; the address is
   taken from the stored identity, never from the caller. Messages are plain text
-  and are only queued in the durable mail outbox, so a delivery failure is
-  handled by the outbox worker and never fails the calling job.
+  and new messages are queued in the durable mail outbox. Idempotent retries
+  report the stored delivery state, including failure and uncertainty. "sent"
+  records provider acceptance, not confirmed receipt in the recipient's inbox.
   """
 
   alias ItsmBackend.Auth
@@ -40,12 +41,26 @@ defmodule ItsmBackend.UserNotifications do
 
       with {:ok, record} <- OutboxStore.enqueue(notification),
            :ok <- same_notification(record, notification) do
-        {:ok, %{outbox_id: record["outbox_id"], recipient_email: recipient.email}}
+        delivery_state(record, recipient.email)
       end
     end
   end
 
   def enqueue(_attrs), do: {:error, :invalid_payload}
+
+  defp delivery_state(%{"status" => status} = record, email)
+       when status in ["pending", "processing", "sent", "dead", "outcome_unknown"] do
+    {:ok,
+     %{
+       outbox_id: record["outbox_id"],
+       recipient_email: email,
+       queued: status == "pending",
+       delivery_status: status,
+       reconciliation_required: status == "outcome_unknown"
+     }}
+  end
+
+  defp delivery_state(_record, _email), do: {:error, :invalid_outbox_delivery_state}
 
   defp validate_fields(attrs) do
     keys = Map.keys(attrs)

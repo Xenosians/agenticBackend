@@ -115,7 +115,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - Reference retrieval currently uses local full-text search. n8n/workflow support is manifest validation only, with no runner or webhook registration.
 - User model/dataset selection leaves the networking specialist's existing model and context unchanged.
 - Provider availability and real email delivery depend on deployment configuration. There is no unified deployment command for all three repositories.
-- A Brevo delivery call makes one attempt, including rate limits and connection loss. This transport does not resend an ambiguously received message; callers own reconciliation and any later attempt. The generic mail outbox has its own retry lifecycle.
+- A Brevo delivery call makes one request per attempt. The outbox retries only explicit rate-limit rejections; lost acknowledgements, uncertain sends and expired processing claims require reconciliation and are never automatically resent. `sent` means provider acceptance, not confirmed inbox delivery.
 
 ## Source references
 

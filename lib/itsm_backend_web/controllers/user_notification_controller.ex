@@ -22,9 +22,28 @@ defmodule ItsmBackendWeb.UserNotificationController do
 
   defp enqueue(conn, payload) do
     case UserNotifications.enqueue(payload) do
-      {:ok, %{outbox_id: outbox_id}} ->
-        # Queued, not delivered: the outbox worker owns delivery and retries.
-        conn |> put_status(:accepted) |> json(%{queued: true, outbox_id: outbox_id})
+      {:ok, %{delivery_status: status} = result} ->
+        # Idempotency preserves the existing delivery outcome, including a
+        # dead or uncertain send. It never silently schedules another email.
+        http_status =
+          case status do
+            "sent" -> :ok
+            state when state in ["dead", "outcome_unknown"] -> :conflict
+            _ -> :accepted
+          end
+
+        response = Map.drop(result, [:recipient_email])
+
+        response =
+          case status do
+            "dead" -> Map.put(response, :error, "notification_delivery_failed")
+            "outcome_unknown" -> Map.put(response, :error, "notification_delivery_unknown")
+            _ -> response
+          end
+
+        conn
+        |> put_status(http_status)
+        |> json(response)
 
       {:error, {:invalid_field, field}} ->
         conn
