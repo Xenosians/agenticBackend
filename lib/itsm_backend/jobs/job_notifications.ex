@@ -95,11 +95,20 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
     event =
       case job.status do
-        "waiting_approval" -> "approval required"
-        status when status in ["reconciliation_required", "outcome_unknown"] -> "reconciliation required"
-        "completed" -> "request completed"
-        "denied" -> "request denied"
-        "failed" -> "request failed"
+        "waiting_approval" ->
+          "approval required"
+
+        status when status in ["reconciliation_required", "outcome_unknown"] ->
+          "reconciliation required"
+
+        "completed" ->
+          "request completed"
+
+        "denied" ->
+          "request denied"
+
+        "failed" ->
+          "request failed"
       end
 
     subject = "#{config.mail_from_name} — #{event}"
