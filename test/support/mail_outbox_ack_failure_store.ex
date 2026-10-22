@@ -4,9 +4,9 @@ defmodule ItsmBackend.MailOutboxAckFailureStore do
 
   defdelegate claim_next(lease), to: OutboxStore
 
-  def mark_sent(id, attempt) do
+  def mark_sent(id, attempt, receipt) do
     if Process.get(:fixture_acknowledgement_was_committed, false) do
-      :ok = OutboxStore.mark_sent(id, attempt)
+      :ok = OutboxStore.mark_sent(id, attempt, receipt)
     end
 
     {:error, :fixture_acknowledgement_lost}

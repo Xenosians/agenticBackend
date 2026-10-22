@@ -155,10 +155,21 @@ defmodule ItsmBackend.Mail.OutboxWorkerTest do
 
   test "confirmed provider acceptance is recorded once, and stale claims cannot overwrite it" do
     message = enqueue()
-    Process.put(:fixture_mail_result, {:ok, %{message_id: "fixture-provider-id"}})
+
+    Process.put(
+      :fixture_mail_result,
+      {:ok, %{transport: "brevo_api", message_id: "<fixture-provider-id@relay.test>"}}
+    )
+
     poll()
     assert_receive :fixture_provider_received_message
     assert_status(message, "sent")
+
+    assert {:ok,
+            %{
+              "transport" => "brevo_api",
+              "provider_message_id" => "<fixture-provider-id@relay.test>"
+            }} = OutboxStore.get(message["outbox_id"])
 
     assert {:error, :not_found} =
              OutboxStore.stop_delivery(message["outbox_id"], 1, "dead", "stale")
@@ -167,12 +178,33 @@ defmodule ItsmBackend.Mail.OutboxWorkerTest do
     refute_received :fixture_provider_received_message
   end
 
+  test "the provider receipt is stored exactly, and never invented when the transport returns none" do
+    for {result, transport, provider_message_id} <- [
+          {{:ok, %{transport: "lab_smtp", message_id: nil}}, "lab_smtp", nil},
+          {{:ok, %{transport: "brevo_api", message_id: "job:abc:1:completed"}}, "brevo_api",
+           "job:abc:1:completed"},
+          {{:ok, "250 2.0.0 OK"}, nil, nil}
+        ] do
+      message = enqueue()
+      Process.put(:fixture_mail_result, result)
+      poll()
+      assert_receive :fixture_provider_received_message
+
+      assert {:ok, stored} = OutboxStore.get(message["outbox_id"])
+      assert stored["status"] == "sent"
+      assert stored["transport"] == transport
+      assert stored["provider_message_id"] == provider_message_id
+    end
+  end
+
   test "a stale attempt cannot acknowledge, reschedule or quarantine another claim" do
     message = enqueue()
     assert {:ok, %{"attempts" => 1}} = OutboxStore.claim_next(60)
     id = message["outbox_id"]
 
-    assert {:error, :not_found} = OutboxStore.mark_sent(id, 2)
+    assert {:error, :not_found} =
+             OutboxStore.mark_sent(id, 2, %{transport: "brevo_api", message_id: "stale"})
+
     assert {:error, :not_found} = OutboxStore.reschedule_or_dead(id, 2, 3, "stale")
     assert {:error, :not_found} = OutboxStore.stop_delivery(id, 2, "outcome_unknown", "stale")
     assert_status(message, "processing")

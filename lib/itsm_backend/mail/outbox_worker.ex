@@ -69,8 +69,8 @@ defmodule ItsmBackend.Mail.OutboxWorker do
     store = state.store
 
     case deliver_message(message, state.mail) do
-      {:ok, _metadata} ->
-        case store.mark_sent(id, attempt) do
+      {:ok, receipt} ->
+        case store.mark_sent(id, attempt, provider_receipt(receipt)) do
           :ok ->
             :ok
 
@@ -160,6 +160,12 @@ defmodule ItsmBackend.Mail.OutboxWorker do
   defp stop_delivery(store, id, attempt, status, reason) do
     report_update(store.stop_delivery(id, attempt, status, failure_code(reason)), id)
   end
+
+  # The transport's own receipt (see ItsmBackend.Mail); any other success value has none.
+  defp provider_receipt(%{transport: _} = receipt),
+    do: Map.take(receipt, [:transport, :message_id])
+
+  defp provider_receipt(_accepted), do: %{}
 
   defp report_update(:ok, _id), do: :ok
 

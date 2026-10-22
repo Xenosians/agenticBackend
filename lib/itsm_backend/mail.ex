@@ -9,6 +9,11 @@ defmodule ItsmBackend.Mail do
 
   Recipients at the local mailbox lab domain are delivered through the lab's
   SMTP service (see `ItsmBackend.Mail.LabRelay`) whatever the mode.
+
+  A successful delivery returns `%{transport: mode, message_id: id | nil}`:
+  the transport that accepted the message and the provider's own message id,
+  when that transport returns one. Acceptance is not inbox delivery; the id
+  lets an operator reconcile the final outcome in the provider's event log.
   """
 
   import Swoosh.Email
@@ -57,11 +62,25 @@ defmodule ItsmBackend.Mail do
 
   defp deliver_message(to, subject, text_body, html_body, {from_name, _from_email} = from, mode) do
     if LabRelay.handles?(to) do
-      LabRelay.deliver(to, subject, text_body, html_body, from_name)
+      to
+      |> LabRelay.deliver(subject, text_body, html_body, from_name)
+      |> receipt("lab_smtp")
     else
-      deliver_provider(to, subject, text_body, html_body, from, mode)
+      to
+      |> deliver_provider(subject, text_body, html_body, from, mode)
+      |> receipt(mode)
     end
   end
+
+  # Only an identifier the transport actually returned is kept; none is invented.
+  defp receipt({:ok, %{message_id: id}}, transport) when is_binary(id),
+    do: {:ok, %{transport: transport, message_id: id}}
+
+  defp receipt({:ok, %{id: id}}, transport) when is_binary(id),
+    do: {:ok, %{transport: transport, message_id: id}}
+
+  defp receipt({:ok, _accepted}, transport), do: {:ok, %{transport: transport, message_id: nil}}
+  defp receipt({:error, _reason} = error, _transport), do: error
 
   defp deliver_provider(to, subject, text_body, html_body, from, "brevo_api") do
     Brevo.deliver(to, subject, text_body, html_body, from)

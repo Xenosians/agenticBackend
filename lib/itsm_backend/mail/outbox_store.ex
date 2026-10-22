@@ -162,13 +162,18 @@ defmodule ItsmBackend.Mail.OutboxStore do
     end
   end
 
-  @spec mark_sent(String.t(), pos_integer()) :: :ok | {:error, term()}
-  def mark_sent(id, attempt) when is_binary(id) and is_integer(attempt) and attempt > 0 do
+  @spec mark_sent(String.t(), pos_integer(), map()) :: :ok | {:error, term()}
+  def mark_sent(id, attempt, receipt \\ %{})
+      when is_binary(id) and is_integer(attempt) and attempt > 0 and is_map(receipt) do
+    # Provider ids such as "<x@relay>" or "job:1:2" would be coerced to record ids
+    # by the JSON RPC layer; one JSON envelope decoded in SurrealDB keeps them exact.
     statement = """
     UPDATE ONLY type::record($table, $id)
     SET
       status = "sent",
       sent_at = <datetime>$sent_at,
+      transport = encoding::json::decode($receipt_json).transport,
+      provider_message_id = encoding::json::decode($receipt_json).provider_message_id,
       lease_expires_at = NONE,
       last_error = NONE
     WHERE status = "processing" AND attempts = $attempt
@@ -181,9 +186,22 @@ defmodule ItsmBackend.Mail.OutboxStore do
         "table" => @table,
         "id" => id,
         "attempt" => attempt,
-        "sent_at" => now_iso()
+        "sent_at" => now_iso(),
+        "receipt_json" =>
+          Jason.encode!(%{
+            "transport" => receipt_text(receipt, :transport, 32),
+            "provider_message_id" => receipt_text(receipt, :message_id, 255)
+          })
       }
     )
+  end
+
+  # A provider receipt field is kept only as bounded text; anything else is recorded as absent.
+  defp receipt_text(receipt, key, max_length) do
+    case Map.get(receipt, key) do
+      value when is_binary(value) and value != "" and byte_size(value) <= max_length -> value
+      _ -> nil
+    end
   end
 
   @spec reschedule_or_dead(String.t(), non_neg_integer(), pos_integer(), String.t()) ::
