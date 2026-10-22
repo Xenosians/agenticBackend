@@ -9,6 +9,8 @@ defmodule ItsmBackend.Mail do
 
   Recipients at the local mailbox lab domain are delivered through the lab's
   SMTP service (see `ItsmBackend.Mail.LabRelay`) whatever the mode.
+  Other `.test` and `.invalid` recipients are rejected before public Brevo or
+  Gmail dispatch. In-process local delivery remains available for test mail.
 
   A successful delivery returns `%{transport: mode, message_id: id | nil}`:
   the transport that accepted the message and the provider's own message id,
@@ -21,6 +23,7 @@ defmodule ItsmBackend.Mail do
   alias ItsmBackend.GmailOAuth
   alias ItsmBackend.Mail.Brevo
   alias ItsmBackend.Mail.LabRelay
+  alias ItsmBackend.Mail.RecipientPolicy
   alias ItsmBackend.Mailer
   alias ItsmBackend.RuntimeConfig
 
@@ -66,11 +69,18 @@ defmodule ItsmBackend.Mail do
       |> LabRelay.deliver(subject, text_body, html_body, from_name)
       |> receipt("lab_smtp")
     else
-      to
-      |> deliver_provider(subject, text_body, html_body, from, mode)
-      |> receipt(mode)
+      with :ok <- public_recipient(to, mode) do
+        to
+        |> deliver_provider(subject, text_body, html_body, from, mode)
+        |> receipt(mode)
+      end
     end
   end
+
+  defp public_recipient(to, mode) when mode in ["brevo_api", "gmail_api"],
+    do: RecipientPolicy.validate_public(to)
+
+  defp public_recipient(_to, _mode), do: :ok
 
   # Only an identifier the transport actually returned is kept; none is invented.
   defp receipt({:ok, %{message_id: id}}, transport) when is_binary(id),

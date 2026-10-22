@@ -22,6 +22,28 @@ defmodule ItsmBackend.Mail.OutboxWorkerTest do
     refute_received :fixture_provider_received_message
   end
 
+  test "invalid Brevo acceptance receipts are quarantined without an automatic resend" do
+    message = enqueue()
+    Process.put(:fixture_mail_result, {:error, {:brevo_invalid_acceptance_receipt, 201}})
+
+    poll()
+    assert_receive :fixture_provider_received_message
+    assert_status(message, "outcome_unknown")
+    poll()
+    refute_received :fixture_provider_received_message
+  end
+
+  test "a recipient rejected before public dispatch is dead without a retry" do
+    message = enqueue()
+    Process.put(:fixture_mail_result, {:error, :invalid_mail_recipient})
+
+    poll()
+    assert_receive :fixture_provider_received_message
+    assert_status(message, "dead")
+    poll()
+    refute_received :fixture_provider_received_message
+  end
+
   test "a server failure and a raised sender both quarantine potentially accepted mail" do
     for result <- [{:error, {:brevo_transient_error, 503, %{}}}, :raise] do
       message = enqueue()

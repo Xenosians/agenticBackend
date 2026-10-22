@@ -38,7 +38,7 @@ defmodule ItsmBackend.Mail.BrevoTest do
 
       assert conn.body_params == %{
                "sender" => %{"name" => "ITSM", "email" => "sender@example.test"},
-               "to" => [%{"name" => "Test User", "email" => "recipient@example.test"}],
+               "to" => [%{"name" => "Test User", "email" => "recipient@example.com"}],
                "subject" => "Weekly progress",
                "textContent" => "Fixture report.",
                "htmlContent" => "<p>Fixture report.</p>"
@@ -49,12 +49,67 @@ defmodule ItsmBackend.Mail.BrevoTest do
 
     assert {:ok, %{provider: "brevo", status: 201, message_id: "provider-message-1"}} =
              Brevo.deliver(
-               {"Test User", "Recipient@example.test"},
+               {"Test User", "Recipient@example.com"},
                "Weekly progress",
                "Fixture report.",
                "<p>Fixture report.</p>",
                {"ITSM", "Sender@example.test"}
              )
+  end
+
+  test "a 2xx without a usable message id is an unknown outcome after one request" do
+    caller = self()
+
+    for body <- [
+          %{},
+          %{"messageId" => nil},
+          %{"messageId" => ""},
+          %{"messageId" => " \t\n"},
+          %{"messageId" => 123},
+          %{"messageId" => ["one", "two"]},
+          %{"messageIds" => ["one"]},
+          []
+        ],
+        status <- [200, 201, 202] do
+      Req.Test.expect(__MODULE__, fn conn ->
+        send(caller, :provider_received_message)
+        Req.Test.json(Plug.Conn.put_status(conn, status), body)
+      end)
+
+      assert {:error, {:brevo_invalid_acceptance_receipt, ^status}} = deliver()
+      assert_receive :provider_received_message
+      refute_received :provider_received_message
+    end
+  end
+
+  test "an undecodable success body cannot certify provider acceptance" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      conn |> Plug.Conn.put_status(202) |> Req.Test.text("not a receipt")
+    end)
+
+    assert {:error, {:brevo_invalid_acceptance_receipt, 202}} = deliver()
+  end
+
+  test "a nonempty provider identifier is preserved byte for byte" do
+    message_id = " <provider:message:exact@relay.example> "
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      Req.Test.json(Plug.Conn.put_status(conn, 201), %{"messageId" => message_id})
+    end)
+
+    assert {:ok, %{message_id: ^message_id}} = deliver()
+  end
+
+  test "reserved test recipients are rejected before public dispatch" do
+    for recipient <- [
+          "someone@example.test",
+          "someone@EXAMPLE.INVALID",
+          "someone@nested.example.invalid",
+          {"Someone", "someone@EXAMPLE.TEST."}
+        ] do
+      assert {:error, :invalid_mail_recipient} =
+               Brevo.deliver(recipient, "Subject", "Body", nil, {"ITSM", "sender@example.com"})
+    end
   end
 
   test "a connection lost after provider receipt makes one attempt and never resends" do
@@ -97,7 +152,7 @@ defmodule ItsmBackend.Mail.BrevoTest do
 
   defp deliver do
     Brevo.deliver(
-      "recipient@example.test",
+      "recipient@example.com",
       "Fixture report",
       "Fixture content",
       nil,

@@ -8,7 +8,11 @@ defmodule ItsmBackend.Mail.Brevo do
   Each delivery makes one request. A missing response does not prove that
   Brevo rejected the message, so this transport never automatically resends.
   Callers must reconcile ambiguous delivery before another attempt.
+  A 2xx response must contain Brevo's nonempty string `messageId`; an invalid
+  receipt is an unknown send outcome and must never be resent automatically.
   """
+
+  alias ItsmBackend.Mail.RecipientPolicy
 
   @endpoint "https://api.brevo.com/v3/smtp/email"
 
@@ -24,6 +28,7 @@ defmodule ItsmBackend.Mail.Brevo do
              is_binary(from_name) and is_binary(from_email) do
     with {:ok, api_key} <- api_key(),
          {:ok, recipient} <- normalize_recipient(to),
+         :ok <- RecipientPolicy.validate_public(recipient["email"]),
          {:ok, sender} <- normalize_sender(from_name, from_email) do
       payload =
         %{
@@ -50,7 +55,10 @@ defmodule ItsmBackend.Mail.Brevo do
            retry: false
          ) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        {:ok, %{provider: "brevo", status: status, message_id: message_id(body)}}
+        case message_id(body) do
+          {:ok, id} -> {:ok, %{provider: "brevo", status: status, message_id: id}}
+          :invalid -> {:error, {:brevo_invalid_acceptance_receipt, status}}
+        end
 
       {:ok, %Req.Response{status: status, body: body}}
       when status == 429 or status >= 500 ->
@@ -127,8 +135,11 @@ defmodule ItsmBackend.Mail.Brevo do
     end
   end
 
-  defp message_id(%{"messageId" => value}) when is_binary(value), do: value
-  defp message_id(_body), do: nil
+  defp message_id(%{"messageId" => value}) when is_binary(value) do
+    if String.trim(value) == "", do: :invalid, else: {:ok, value}
+  end
+
+  defp message_id(_body), do: :invalid
 
   defp summarize_body(body) when is_map(body), do: Map.take(body, ["code", "message"])
   defp summarize_body(body) when is_binary(body), do: String.slice(body, 0, 500)
