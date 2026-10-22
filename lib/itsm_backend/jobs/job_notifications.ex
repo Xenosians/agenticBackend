@@ -4,6 +4,10 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
   Notification content is derived only from durable job state and trusted
   backend metadata. No LLM-generated recommendation text is used.
+
+  Successful-task mail is sent unless `TASK_COMPLETION_MAIL_ENABLED` is
+  false. Approval, failure and reconciliation notices remain independent of
+  that switch, as do explicitly requested notifications and authentication mail.
   """
 
   require Logger
@@ -39,7 +43,21 @@ defmodule ItsmBackend.Jobs.JobNotifications do
   end
 
   @spec enqueue(Job.t()) :: {:ok, term()} | {:error, term()}
+  def enqueue(%Job{status: "completed"} = job) do
+    if RuntimeConfig.task_completion_mail!().enabled do
+      enqueue_notification(job)
+    else
+      {:ok, :disabled}
+    end
+  end
+
   def enqueue(%Job{status: status} = job) when status in @notifiable_statuses do
+    enqueue_notification(job)
+  end
+
+  def enqueue(%Job{}), do: {:ok, :not_required}
+
+  defp enqueue_notification(%Job{} = job) do
     with {:ok, user} <- AuthStore.get_user(job.user_id),
          {:ok, recipient} <- recipient_from_user(user) do
       case recipient do
@@ -67,8 +85,6 @@ defmodule ItsmBackend.Jobs.JobNotifications do
       end
     end
   end
-
-  def enqueue(%Job{}), do: {:ok, :not_required}
 
   defp recipient_from_user(%{"email" => email} = user) when is_binary(email) do
     normalized = String.trim(email)

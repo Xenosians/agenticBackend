@@ -191,8 +191,7 @@ end
 
 config :itsm_backend,
        :task_completion_mail,
-       enabled: System.get_env("TASK_COMPLETION_MAIL_ENABLED") || "false",
-       poll_interval_ms: System.get_env("TASK_COMPLETION_MAIL_POLL_INTERVAL_MS") || "5000"
+       enabled: System.get_env("TASK_COMPLETION_MAIL_ENABLED") || "true"
 
 # ------------------------------------------------------------
 # Internal service authentication

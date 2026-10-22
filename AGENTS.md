@@ -1,5 +1,7 @@
 This is a web application written using the Phoenix web framework.
 
+For this three-repository workspace, first read [shared coding standards](../../docs/coding-standards.md) and the [continuation checkpoint](../../IMPLEMENTATION_PROGRESS.md). Preserve other contributors' changes. The rules below retain the repository-specific Phoenix conventions.
+
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues

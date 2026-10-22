@@ -54,6 +54,7 @@ Use [.env.example](.env.example) and [runtime configuration](config/runtime.exs)
 | `APP_FRONTEND_URL`, `CORS_ALLOWED_ORIGINS` | Frontend origin and browser access policy |
 | `AUTH_COOKIE_*` | Cookie policy appropriate to the deployment |
 | `MAILER_MODE` | `local` for development, or configured `brevo_api` / `gmail_api` |
+| `TASK_COMPLETION_MAIL_ENABLED` | Successful-job completion mail (default `true`; set `false` to disable); approval/failure/reconciliation notices, authentication mail and approved `notify_user` requests remain independent |
 
 For the included database container, populate the additional variables required by [docker-compose.yaml](docker-compose.yaml), then run:
 

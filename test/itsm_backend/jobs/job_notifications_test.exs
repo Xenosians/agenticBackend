@@ -8,6 +8,13 @@ defmodule ItsmBackend.Jobs.JobNotificationsTest do
   alias ItsmBackendWeb.AuthTestSupport
 
   setup do
+    original = Application.get_env(:itsm_backend, :task_completion_mail)
+    Application.put_env(:itsm_backend, :task_completion_mail, enabled: true)
+
+    on_exit(fn ->
+      Application.put_env(:itsm_backend, :task_completion_mail, original)
+    end)
+
     identity = AuthTestSupport.authenticated_identity!()
 
     {:ok, job} =
@@ -17,7 +24,64 @@ defmodule ItsmBackend.Jobs.JobNotificationsTest do
         message: "A request with private user content."
       })
 
-    %{job: %{job | attempts: 1, proposed_tool: %{"tool" => "workspace_mkdir"}}}
+    %{
+      identity: identity,
+      job: %{job | attempts: 1, proposed_tool: %{"tool" => "workspace_mkdir"}}
+    }
+  end
+
+  test "disabled completion mail creates no outbox record and leaves other lifecycle notices enabled",
+       %{
+         job: job
+       } do
+    Application.put_env(:itsm_backend, :task_completion_mail, enabled: false)
+    completed = %{job | status: "completed"}
+    assert {:ok, :disabled} = JobNotifications.enqueue(completed)
+
+    id =
+      :crypto.hash(:sha256, "job:#{job.id}:1:completed")
+      |> Base.encode16(case: :lower)
+
+    assert {:error, :not_found} = OutboxStore.get(id)
+
+    for status <- [
+          "waiting_approval",
+          "failed",
+          "denied",
+          "outcome_unknown",
+          "reconciliation_required"
+        ] do
+      assert {:ok, notice} = JobNotifications.enqueue(%{job | status: status})
+      assert notice["status"] == "pending"
+      assert notice["dedupe_key"] == "job:#{job.id}:1:#{status}"
+    end
+
+    Application.put_env(:itsm_backend, :task_completion_mail, enabled: true)
+    assert {:ok, notification} = JobNotifications.enqueue(completed)
+    assert notification["outbox_id"] == id
+    assert notification["status"] == "pending"
+    assert {:ok, replay} = JobNotifications.enqueue(completed)
+    assert replay["outbox_id"] == notification["outbox_id"]
+  end
+
+  test "disabled automatic completion mail preserves explicitly requested user notifications", %{
+    identity: identity,
+    job: job
+  } do
+    Application.put_env(:itsm_backend, :task_completion_mail, enabled: false)
+
+    assert {:ok, notification} =
+             ItsmBackend.UserNotifications.enqueue(%{
+               "email" => identity.user["email"],
+               "message" => "The explicitly approved work has finished.",
+               "dedupe_key" => "explicit-completion:#{job.id}"
+             })
+
+    assert notification.queued
+    assert notification.delivery_status == "pending"
+    assert {:ok, record} = OutboxStore.get(notification.outbox_id)
+    assert record["kind"] == "user_notification"
+    assert record["recipient_email"] == identity.user["email"]
   end
 
   test "completed task mail is durable, deduplicated and does not copy model content", %{job: job} do
