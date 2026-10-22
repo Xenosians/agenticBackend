@@ -40,8 +40,8 @@ defmodule ItsmBackend.Chats do
   def touch(chat_id), do: SurrealStore.touch(chat_id, now())
 
   def archive(user, chat_id) do
-    with {:ok, _chat} <- get_authorized(user, chat_id),
-         {:ok, archived} <- SurrealStore.archive(chat_id, now()),
+    with {:ok, chat} <- get_authorized(user, chat_id),
+         {:ok, archived} <- SurrealStore.archive(chat["chat_id"], now()),
          true <- is_map(archived) || {:error, :not_found} do
       {:ok, archived}
     else
@@ -52,7 +52,7 @@ defmodule ItsmBackend.Chats do
 
   def history(user, chat_id, limit \\ 100, version \\ 1) do
     with {:ok, chat} <- get_authorized(user, chat_id),
-         {:ok, jobs} <- Jobs.list_by_conversation(chat["user_id"], chat_id, limit) do
+         {:ok, jobs} <- Jobs.list_by_conversation(chat["user_id"], chat["chat_id"], limit) do
       {:ok, Enum.flat_map(jobs, &job_turns(&1, version))}
     end
   end

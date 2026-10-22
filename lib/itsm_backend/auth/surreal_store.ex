@@ -20,13 +20,13 @@ defmodule ItsmBackend.Auth.SurrealStore do
     params = %{
       "identity_table" => @identity_table,
       "identity_id" => identity["identity_id"],
-      "identity" => identity,
+      "identity" => Surreal.datetime_fields(identity, ~w(created_at)),
       "user_table" => @user_table,
       "user_id" => user["user_id"],
-      "user" => user,
+      "user" => Surreal.datetime_fields(user, ~w(created_at updated_at email_verified_at)),
       "token_table" => @token_table,
       "token_id" => token["token_id"],
-      "token_record" => token
+      "token_record" => Surreal.datetime_fields(token, ~w(created_at expires_at consumed_at))
     }
 
     case Surreal.query(statement, params) do
@@ -70,7 +70,8 @@ defmodule ItsmBackend.Auth.SurrealStore do
            Surreal.query(statement, %{
              "table" => @session_table,
              "id" => session["session_id"],
-             "session_record" => session
+             "session_record" =>
+               Surreal.datetime_fields(session, ~w(created_at last_seen_at expires_at revoked_at))
            }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
@@ -90,7 +91,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
            Surreal.query(statement, %{
              "token_hash" => token_hash,
              "revoked_at" => nil,
-             "now" => now
+             "now" => Surreal.datetime(now)
            }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
@@ -110,7 +111,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
              "session_id" => session_id,
              "user_id" => user_id,
              "revoked_at" => nil,
-             "now" => now
+             "now" => Surreal.datetime(now)
            }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
@@ -128,7 +129,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
            Surreal.query(statement, %{
              "table" => @session_table,
              "id" => session_id,
-             "now" => now
+             "now" => Surreal.datetime(now)
            }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
@@ -161,7 +162,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
              "table" => @session_table,
              "id" => session_id,
              "user_id" => user_id,
-             "now" => now,
+             "now" => Surreal.datetime(now),
              "not_revoked" => nil
            }),
          {:ok, record} <- single_or_nil(results) do
@@ -178,7 +179,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
 
     case Surreal.query(statement, %{
            "user_id" => user_id,
-           "now" => now,
+           "now" => Surreal.datetime(now),
            "not_revoked" => nil
          }) do
       {:ok, _} -> :ok
@@ -194,7 +195,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
     case Surreal.query(statement, %{
            "table" => @token_table,
            "id" => token["token_id"],
-           "token_record" => token
+           "token_record" => Surreal.datetime_fields(token, ~w(created_at expires_at consumed_at))
          }) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
@@ -227,7 +228,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
            "token_id" => token_id,
            "user_table" => @user_table,
            "user_id" => user_id,
-           "now" => now,
+           "now" => Surreal.datetime(now),
            "not_consumed" => nil
          }) do
       {:ok, _} -> get_user(user_id)
@@ -255,7 +256,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
            "user_table" => @user_table,
            "user_id" => user_id,
            "password_hash" => password_hash,
-           "now" => now,
+           "now" => Surreal.datetime(now),
            "not_consumed" => nil,
            "not_revoked" => nil
          }) do

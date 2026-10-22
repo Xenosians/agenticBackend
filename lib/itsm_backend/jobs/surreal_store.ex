@@ -875,7 +875,7 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     do: nil
 
   defp encode_datetime(%DateTime{} = datetime) do
-    DateTime.to_iso8601(datetime)
+    datetime
   end
 
   defp decode_datetime(nil),

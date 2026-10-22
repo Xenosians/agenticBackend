@@ -23,9 +23,9 @@ defmodule ItsmBackend.ProvisionedMailboxes.SurrealStore do
 
     params = %{
       "mailbox_id" => Map.fetch!(mailbox, "mailbox_record_id"),
-      "mailbox" => mailbox,
+      "mailbox" => Surreal.datetime_fields(mailbox, ~w(created_at)),
       "credential_id" => Map.fetch!(credential, "credential_id"),
-      "credential" => credential
+      "credential" => Surreal.datetime_fields(credential, ~w(created_at expires_at consumed_at))
     }
 
     case Surreal.query(statement, params) do

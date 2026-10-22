@@ -64,7 +64,10 @@ defmodule ItsmBackend.DirectoryCredentials do
     CREATE ONLY type::record('credential_secret', $credential_id) CONTENT $credential;
     """
 
-    params = %{"credential_id" => credential["credential_id"], "credential" => credential}
+    params = %{
+      "credential_id" => credential["credential_id"],
+      "credential" => Surreal.datetime_fields(credential, ~w(created_at expires_at consumed_at))
+    }
 
     case Surreal.query(statement, params) do
       {:ok, _} -> :ok

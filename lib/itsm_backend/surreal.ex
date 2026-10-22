@@ -11,7 +11,22 @@ defmodule ItsmBackend.Surreal do
   """
 
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackend.Surreal.Bindings
+  alias ItsmBackend.Surreal.DateTimeValue
   alias ItsmBackend.Surreal.Session
+
+  @doc "Marks a trusted storage timestamp; ordinary user strings are never date-inferred."
+  def datetime(nil), do: nil
+  def datetime(value), do: %DateTimeValue{value: value}
+
+  @doc "Marks only the named schema timestamps in a trusted storage record."
+  def datetime_fields(record, fields) when is_map(record) and is_list(fields) do
+    Enum.reduce(fields, record, fn field, result ->
+      if Map.has_key?(result, field),
+        do: Map.update!(result, field, &datetime/1),
+        else: result
+    end)
+  end
 
   @spec query(String.t(), map()) ::
           {:ok, list()}
@@ -22,6 +37,12 @@ defmodule ItsmBackend.Surreal do
       )
       when is_binary(statement) and
              is_map(params) do
+    with {:ok, statement, params} <- Bindings.bind(statement, params) do
+      query_bound(statement, params)
+    end
+  end
+
+  defp query_bound(statement, params) do
     config =
       RuntimeConfig.surrealdb!()
 

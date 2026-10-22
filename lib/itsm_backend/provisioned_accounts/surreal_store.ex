@@ -24,10 +24,11 @@ defmodule ItsmBackend.ProvisionedAccounts.SurrealStore do
     params = %{
       "account_table" => @account_table,
       "account_id" => Map.fetch!(account_record, "account_record_id"),
-      "account_record" => account_record,
+      "account_record" => Surreal.datetime_fields(account_record, ~w(created_at)),
       "credential_table" => @credential_table,
       "credential_id" => Map.fetch!(credential_record, "credential_id"),
-      "credential_record" => credential_record
+      "credential_record" =>
+        Surreal.datetime_fields(credential_record, ~w(created_at expires_at consumed_at))
     }
 
     case Surreal.query(statement, params) do

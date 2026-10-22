@@ -9,7 +9,11 @@ defmodule ItsmBackend.Chats.SurrealStore do
     statement = "CREATE ONLY type::record($table, $id) CONTENT $chat RETURN AFTER;"
 
     with {:ok, results} <-
-           Surreal.query(statement, %{"table" => @table, "id" => chat["chat_id"], "chat" => chat}),
+           Surreal.query(statement, %{
+             "table" => @table,
+             "id" => chat["chat_id"],
+             "chat" => Surreal.datetime_fields(chat, ~w(created_at updated_at archived_at))
+           }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
     end
@@ -18,7 +22,8 @@ defmodule ItsmBackend.Chats.SurrealStore do
   def get(chat_id) do
     statement = "SELECT * FROM ONLY type::record($table, $id);"
 
-    with {:ok, results} <- Surreal.query(statement, %{"table" => @table, "id" => chat_id}),
+    with {:ok, chat_id} <- canonical_id(chat_id),
+         {:ok, results} <- Surreal.query(statement, %{"table" => @table, "id" => chat_id}),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
     end
@@ -45,7 +50,11 @@ defmodule ItsmBackend.Chats.SurrealStore do
     """
 
     with {:ok, results} <-
-           Surreal.query(statement, %{"table" => @table, "id" => chat_id, "now" => now}),
+           Surreal.query(statement, %{
+             "table" => @table,
+             "id" => chat_id,
+             "now" => Surreal.datetime(now)
+           }),
          {:ok, record} <- single_or_nil(results) do
       {:ok, record}
     end
@@ -65,7 +74,7 @@ defmodule ItsmBackend.Chats.SurrealStore do
              %{
                "table" => @table,
                "id" => chat_id,
-               "now" => now
+               "now" => Surreal.datetime(now)
              }
            ),
          {:ok, record} <- single_or_nil(results) do
@@ -87,4 +96,17 @@ defmodule ItsmBackend.Chats.SurrealStore do
 
   defp rows([%{"status" => "OK", "result" => result} | _]), do: {:ok, result}
   defp rows(other), do: {:error, {:unexpected_surreal_response, other}}
+
+  # The public API already accepts the storage-record alias. Resolve this one
+  # documented identity shape explicitly instead of relying on RPC coercion.
+  # Generated chat identities are 16 random bytes encoded as lowercase hex.
+  defp canonical_id(@table <> ":" <> alias_id) do
+    case Regex.run(~r/\A(?:([0-9a-f]{32})|⟨([0-9a-f]{32})⟩|`([0-9a-f]{32})`)\z/u, alias_id) do
+      [_ | captures] -> {:ok, Enum.find(captures, &(&1 != ""))}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp canonical_id(id) when is_binary(id), do: {:ok, id}
+  defp canonical_id(_), do: {:error, :not_found}
 end
