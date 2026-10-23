@@ -15,6 +15,7 @@ defmodule ItsmBackend.Jobs.PublicContract do
   alias ItsmBackend.Contracts
   alias ItsmBackend.Jobs.Lifecycle
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.Jobs.WorkflowContract
 
   # ------------------------------------------------------------
   # Create request
@@ -30,7 +31,10 @@ defmodule ItsmBackend.Jobs.PublicContract do
            payload
          ) do
       :ok ->
-        {:ok, payload}
+        case WorkflowContract.validate(payload["workflow_contract"]) do
+          {:ok, _, _} -> {:ok, payload}
+          {:error, reason} -> {:error, {:invalid_job_create_request, :workflow_contract, reason}}
+        end
 
       {:error, reason} ->
         {:error,
@@ -67,6 +71,18 @@ defmodule ItsmBackend.Jobs.PublicContract do
         status,
         submission_id \\ nil
       ) do
+    build_create_response(job_id, status, submission_id, nil, nil)
+  end
+
+  @spec build_create_response(term(), term(), term(), term(), term()) ::
+          {:ok, map()} | {:error, term()}
+  def build_create_response(
+        job_id,
+        status,
+        submission_id,
+        workflow_contract,
+        workflow_contract_hash
+      ) do
     payload = %{
       "job_id" => job_id,
       "status" => Lifecycle.wire_status(status, 2)
@@ -77,13 +93,19 @@ defmodule ItsmBackend.Jobs.PublicContract do
         do: payload,
         else: Map.put(payload, "submission_id", submission_id)
 
-    case Contracts.validate(
-           :job_create_response,
-           payload
-         ) do
-      :ok ->
-        {:ok, payload}
+    payload =
+      if is_nil(workflow_contract) and is_nil(workflow_contract_hash),
+        do: payload,
+        else:
+          Map.merge(payload, %{
+            "workflow_contract" => workflow_contract,
+            "workflow_contract_hash" => workflow_contract_hash
+          })
 
+    with :ok <- WorkflowContract.validate_binding(workflow_contract, workflow_contract_hash),
+         :ok <- Contracts.validate(:job_create_response, payload) do
+      {:ok, payload}
+    else
       {:error, reason} ->
         {:error,
          {
@@ -110,6 +132,8 @@ defmodule ItsmBackend.Jobs.PublicContract do
       "conversation_id" => job.conversation_id,
       "chat_id" => job.conversation_id,
       "message" => job.message,
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash,
       "status" => Lifecycle.wire_status(job.status, version),
       "attempts" => job.attempts,
       "created_at" => encode_datetime(job.created_at),

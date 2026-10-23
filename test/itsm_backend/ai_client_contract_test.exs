@@ -3,6 +3,34 @@ defmodule ItsmBackend.AIClientContractTest do
 
   alias ItsmBackend.AIClient
 
+  def execute_job(job_id, attempt, user_id, message, context, binding) do
+    {:ok,
+     %{
+       job_id: job_id,
+       attempt: attempt,
+       user_id: user_id,
+       message: message,
+       context: context,
+       workflow_binding: binding
+     }}
+  end
+
+  test "workflow-aware clients receive the whole binding and bounded chat context" do
+    binding = ItsmBackend.WorkflowContractFixture.binding()
+    context = [%{"role" => "user", "content" => "Earlier request"}]
+
+    assert {:ok, %{workflow_binding: ^binding, context: ^context}} =
+             AIClient.dispatch_job(
+               __MODULE__,
+               "workflow-job",
+               1,
+               "owner",
+               "Reviewed request",
+               context,
+               binding
+             )
+  end
+
   defmodule LegacyClient do
     def execute_job(job_id, attempt, user_id, message) do
       {:ok,
@@ -69,5 +97,23 @@ defmodule ItsmBackend.AIClientContractTest do
                "hello",
                [%{"role" => "user", "content" => "context"}]
              )
+  end
+
+  test "a legacy client cannot silently drop explicit workflow obligations" do
+    binding = ItsmBackend.WorkflowContractFixture.binding()
+
+    assert {:error, {:ai_client_missing_workflow_callback, LegacyClient}} =
+             AIClient.dispatch_job(
+               LegacyClient,
+               "job-1",
+               1,
+               "owner",
+               "Reviewed request",
+               [],
+               binding
+             )
+
+    assert {:ok, %{context: :legacy}} =
+             AIClient.dispatch_job(LegacyClient, "job-1", 1, "owner", "Legacy request", [], nil)
   end
 end

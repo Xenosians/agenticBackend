@@ -4,14 +4,90 @@
   "title": "Create Job Request",
   "description": "Authenticated request for creating a durable AI job inside a user-owned chat.",
   "type": "object",
-  "required": ["chat_id", "message"],
+  "required": [
+    "chat_id",
+    "message"
+  ],
   "properties": {
-    "chat_id": {"type": "string", "minLength": 1},
-    "message": {"type": "string", "minLength": 1},
+    "chat_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
     "submission_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-      "description": "Optional client-generated UUID pinned before sending. Reusing it under the same owner returns the original job only when chat and message match."
+      "description": "Optional client-generated UUID pinned before sending. Reusing it under the same owner returns the original job only when chat, message and workflow contract match."
+    },
+    "workflow_contract": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Explicit user-reviewed requested operations. Restricts completeness; never grants tool permission or approval.",
+      "required": [
+        "version",
+        "steps"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "capability",
+              "grounded_arguments",
+              "after_success_of"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,79}$"
+              },
+              "capability": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]{1,150}$"
+              },
+              "grounded_arguments": {
+                "type": "object",
+                "maxProperties": 32,
+                "propertyNames": {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,149}$"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              "after_success_of": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,79}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

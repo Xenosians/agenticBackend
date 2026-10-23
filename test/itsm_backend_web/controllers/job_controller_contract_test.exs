@@ -18,6 +18,51 @@ defmodule ItsmBackendWeb.JobControllerContractTest do
     {:ok, conn: authenticated_conn, user: identity.user, chat: identity.chat}
   end
 
+  test "reviewed workflow survives authenticated create, history and replay conflicts",
+       %{conn: conn, user: user, chat: chat} do
+    contract = ItsmBackend.WorkflowContractFixture.contract()
+
+    payload = %{
+      "chat_id" => chat["chat_id"],
+      "message" => "Reviewed account and Jira request",
+      "submission_id" => ItsmBackend.SubmissionTestSupport.identity(),
+      "workflow_contract" => contract
+    }
+
+    created = conn |> post(~p"/api/v1/jobs", payload) |> json_response(202)
+    assert {:ok, stored} = Jobs.get(created["job_id"])
+    assert stored.user_id == user["user_id"]
+    assert stored.workflow_contract == contract
+    assert created["workflow_contract"] == stored.workflow_contract
+    assert created["workflow_contract_hash"] == stored.workflow_contract_hash
+    shown = conn |> recycle() |> get(~p"/api/v1/jobs/#{stored.id}") |> json_response(200)
+    assert shown["workflow_contract"] == contract
+    assert shown["workflow_contract_hash"] == stored.workflow_contract_hash
+    assert {:ok, history} = ItsmBackend.Chats.history(user, chat["chat_id"])
+    turn = Enum.find(history, &(&1["job_id"] == stored.id and &1["role"] == "user"))
+    assert turn["workflow_contract"] == contract
+    assert turn["workflow_contract_hash"] == stored.workflow_contract_hash
+
+    conflict =
+      conn
+      |> recycle()
+      |> post(~p"/api/v1/jobs", Map.delete(payload, "workflow_contract"))
+      |> json_response(409)
+
+    assert conflict["error"] == "submission_conflict"
+
+    forged =
+      conn
+      |> recycle()
+      |> post(
+        ~p"/api/v1/jobs",
+        Map.put(payload, "workflow_contract_hash", stored.workflow_contract_hash)
+      )
+      |> json_response(422)
+
+    assert forged["error"] == "invalid_request"
+  end
+
   test "creates durable job through authenticated public contract",
        %{
          conn: conn,

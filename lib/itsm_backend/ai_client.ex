@@ -2,12 +2,13 @@ defmodule ItsmBackend.AIClient do
   @moduledoc """
   Behaviour and compatibility boundary for Phoenix -> AI calls.
 
-  Durable job execution has two protocol shapes:
+  Durable job execution has three protocol shapes:
 
     * execute_job/4 for legacy/no-context callers
     * execute_job/5 for bounded conversation context
+    * execute_job/6 for a persisted requested workflow binding
 
-  Queue workers should call dispatch_job/6 instead of probing callback
+  Queue workers should call dispatch_job/7 instead of probing callback
   availability themselves.  This keeps compatibility policy centralized and
   refuses to silently drop non-empty context when a client lacks execute_job/5.
   """
@@ -38,7 +39,40 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
-  @optional_callbacks execute_job: 5
+  @callback execute_job(String.t(), pos_integer(), String.t(), String.t(), list(), map() | nil) ::
+              {:ok, map()} | {:error, term()}
+
+  @optional_callbacks execute_job: 5, execute_job: 6
+
+  @spec dispatch_job(
+          module(),
+          String.t(),
+          pos_integer(),
+          String.t(),
+          String.t(),
+          list(),
+          map() | nil
+        ) ::
+          {:ok, map()} | {:error, term()}
+  def dispatch_job(client, job_id, attempt, user_id, message, context, nil) do
+    dispatch_job(client, job_id, attempt, user_id, message, context)
+  end
+
+  def dispatch_job(client, job_id, attempt, user_id, message, context, workflow_binding) do
+    with {:ok, _} <-
+           ItsmBackend.AIClient.JobContract.build_execute_request(
+             job_id,
+             attempt,
+             user_id,
+             message,
+             context,
+             workflow_binding
+           ) do
+      if function_exported?(client, :execute_job, 6),
+        do: client.execute_job(job_id, attempt, user_id, message, context, workflow_binding),
+        else: {:error, {:ai_client_missing_workflow_callback, client}}
+    end
+  end
 
   @callback approve(approval_id :: String.t()) ::
               {:ok, map()}

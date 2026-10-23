@@ -2,6 +2,44 @@ defmodule ItsmBackend.AIClient.ContextContractTest do
   use ExUnit.Case, async: true
 
   alias ItsmBackend.AIClient.JobContract
+  alias ItsmBackend.WorkflowContractFixture, as: Fixture
+
+  test "execution request carries only an intact Phoenix-computed workflow binding" do
+    binding = Fixture.binding()
+
+    assert {:ok, payload} =
+             JobContract.build_execute_request(
+               "job-1",
+               1,
+               "owner",
+               "Create reviewed operations",
+               [],
+               binding
+             )
+
+    assert payload["workflow_contract"] == binding["workflow_contract"]
+    assert payload["workflow_contract_hash"] == binding["workflow_contract_hash"]
+
+    assert {:error, {:invalid_ai_job_execute_request, _}} =
+             JobContract.build_execute_request(
+               "job-1",
+               1,
+               "owner",
+               "Create reviewed operations",
+               [],
+               Map.put(binding, "workflow_contract_hash", String.duplicate("0", 64))
+             )
+
+    assert {:error, {:invalid_ai_job_execute_request, _}} =
+             JobContract.build_execute_request(
+               "job-1",
+               1,
+               "owner",
+               "Create reviewed operations",
+               [],
+               Map.delete(binding, "workflow_contract_hash")
+             )
+  end
 
   test "build_execute_request/5 carries bounded conversation context" do
     context = [

@@ -16,6 +16,12 @@ DTOs or models, but those models are not the source of truth.
 The JSON Schemas in this directory are the source of truth for data
 crossing service boundaries.
 
+Job creation optionally carries a user-reviewed `workflow_contract`. Phoenix adds
+its canonical digest before durable AI dispatch; clients cannot supply that digest.
+The contract is immutable under submission replay and approval continuation. See
+the [workflow protocol](../../docs/requested-workflow.md) for semantic limits,
+hash projection and compatibility behavior beyond the JSON Schema structure.
+
 ## Layout
 
 ```text

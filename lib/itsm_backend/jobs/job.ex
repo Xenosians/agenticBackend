@@ -6,6 +6,8 @@ defmodule ItsmBackend.Jobs.Job do
   It does not know about SurrealDB, FastAPI, or Phoenix controllers.
   """
 
+  alias ItsmBackend.Jobs.WorkflowContract
+
   @statuses [
     "pending",
     "processing",
@@ -39,6 +41,8 @@ defmodule ItsmBackend.Jobs.Job do
     :user_id,
     :conversation_id,
     :message,
+    :workflow_contract,
+    :workflow_contract_hash,
     :status,
     :attempts,
     :created_at,
@@ -78,7 +82,9 @@ defmodule ItsmBackend.Jobs.Job do
              attrs,
              :conversation_id
            ),
-         {:ok, submission_id} <- optional_submission_id(attrs) do
+         {:ok, submission_id} <- optional_submission_id(attrs),
+         {:ok, workflow_contract, workflow_contract_hash} <-
+           WorkflowContract.validate(fetch_value(attrs, :workflow_contract)) do
       now = now()
 
       {:ok,
@@ -87,6 +93,8 @@ defmodule ItsmBackend.Jobs.Job do
          user_id: user_id,
          conversation_id: conversation_id,
          message: message,
+         workflow_contract: workflow_contract,
+         workflow_contract_hash: workflow_contract_hash,
          status: "pending",
          attempts: 0,
          created_at: now,

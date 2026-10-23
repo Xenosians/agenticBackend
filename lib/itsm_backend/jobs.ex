@@ -88,7 +88,9 @@ defmodule ItsmBackend.Jobs do
   def continue_approval(%Job{} = previous, %Job{} = next) do
     if next.id == previous.id and next.user_id == previous.user_id and
          next.attempts == previous.attempts and next.message == previous.message and
-         next.conversation_id == previous.conversation_id do
+         next.conversation_id == previous.conversation_id and
+         next.workflow_contract == previous.workflow_contract and
+         next.workflow_contract_hash == previous.workflow_contract_hash do
       case SurrealStore.continue_if_waiting_approval(previous, next) do
         {:ok, nil} -> {:error, :approval_binding_changed}
         result -> Events.after_write(result)
@@ -292,9 +294,17 @@ defmodule ItsmBackend.Jobs do
         error
       )
       when is_binary(error) do
+    fail_processing_if_current(job, error, "outcome_unknown")
+  end
+
+  @spec fail_processing_if_current(Job.t(), String.t(), String.t()) ::
+          {:ok, Job.t() | nil} | {:error, term()}
+  def fail_processing_if_current(%Job{} = job, error, status)
+      when is_binary(error) and status in ["failed", "outcome_unknown"] do
     SurrealStore.fail_processing_if_current(
       job,
-      error
+      error,
+      status
     )
     |> Events.after_write()
   end

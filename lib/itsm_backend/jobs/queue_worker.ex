@@ -35,6 +35,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
                          "Execution outcome is ambiguous, so automatic retry " <>
                          "was suppressed."
 
+  @workflow_client_error "workflow_client_unsupported: The configured AI client does not support " <>
+                           "reviewed workflows. No AI execution was dispatched."
+
   # ------------------------------------------------------------
   # Public API
   # ------------------------------------------------------------
@@ -64,7 +67,8 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           opts,
           :lease_seconds
         ),
-      inflight_job_id: nil
+      inflight_job_id: nil,
+      undispatched_failure: nil
     }
 
     send(
@@ -85,15 +89,15 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         state
       ) do
     next_state =
-      case state.inflight_job_id do
-        nil ->
-          reconcile_or_dispatch(state)
+      case state.undispatched_failure do
+        %Job{} = job ->
+          persist_undispatched_failure(job, state)
 
-        job_id ->
-          check_inflight(
-            job_id,
-            state
-          )
+        nil ->
+          case state.inflight_job_id do
+            nil -> reconcile_or_dispatch(state)
+            job_id -> check_inflight(job_id, state)
+          end
       end
 
     schedule_tick(next_state.poll_interval_ms)
@@ -239,6 +243,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         safely_requeue(job)
         state
 
+      {:error, {:ai_client_missing_workflow_callback, ^ai_client}} ->
+        # The compatibility boundary verified that no workflow callback exists;
+        # no model request or tool operation was invoked. Persist a known failure
+        # rather than waiting for an execution lease and inventing uncertainty.
+        persist_undispatched_failure(job, state)
+
       {:error,
        {
          :ai_service_error,
@@ -271,6 +281,28 @@ defmodule ItsmBackend.Jobs.QueueWorker do
     end
   end
 
+  defp persist_undispatched_failure(%Job{} = job, state) do
+    case Jobs.fail_processing_if_current(job, @workflow_client_error, "failed") do
+      {:ok, %Job{status: "failed"}} ->
+        %{state | inflight_job_id: nil, undispatched_failure: nil}
+
+      {:ok, nil} ->
+        # A concurrent state, attempt or lease change invalidated this exact
+        # disposition. Never overwrite it or dispatch the request again.
+        %{state | inflight_job_id: nil, undispatched_failure: nil}
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to persist undispatched workflow failure job_id=#{job.id} reason=#{inspect(reason)}"
+        )
+
+        # Retain only the exact failed claim. A later tick retries persistence,
+        # never AI dispatch. After a process crash the usual durable recovery is
+        # conservative because this local proof is no longer available.
+        %{state | inflight_job_id: nil, undispatched_failure: job}
+    end
+  end
+
   # ------------------------------------------------------------
   # Bounded chat context projection
   # ------------------------------------------------------------
@@ -283,9 +315,19 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         job.attempts,
         job.user_id,
         job.message,
-        context
+        context,
+        workflow_binding(job)
       )
     end
+  end
+
+  defp workflow_binding(%Job{workflow_contract: nil, workflow_contract_hash: nil}), do: nil
+
+  defp workflow_binding(%Job{} = job) do
+    %{
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash
+    }
   end
 
   defp bounded_context(%Job{} = job) do

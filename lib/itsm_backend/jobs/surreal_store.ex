@@ -8,6 +8,7 @@ defmodule ItsmBackend.Jobs.SurrealStore do
   """
 
   alias ItsmBackend.Jobs.Job
+  alias ItsmBackend.Jobs.WorkflowContract
   alias ItsmBackend.Surreal
 
   @table "job"
@@ -327,12 +328,22 @@ defmodule ItsmBackend.Jobs.SurrealStore do
           {:ok, Job.t() | nil}
           | {:error, term()}
   def fail_processing_if_current(
+        %Job{} = job,
+        error
+      ) do
+    fail_processing_if_current(job, error, "outcome_unknown")
+  end
+
+  @spec fail_processing_if_current(Job.t(), String.t(), String.t()) ::
+          {:ok, Job.t() | nil} | {:error, term()}
+  def fail_processing_if_current(
         %Job{
           status: "processing"
         } = job,
-        error
+        error,
+        status
       )
-      when is_binary(error) do
+      when is_binary(error) and status in ["failed", "outcome_unknown"] do
     failed_job =
       Job.put_error(
         job,
@@ -342,12 +353,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     with {:ok, failed_job} <-
            Job.transition(
              failed_job,
-             "outcome_unknown"
+             status
            ) do
       statement = """
       UPDATE type::record($table, $id)
       SET
-        status = "outcome_unknown",
+        status = $status,
         error = $error,
         completed_at = $completed_at,
         lease_expires_at = $cleared_lease
@@ -366,6 +377,7 @@ defmodule ItsmBackend.Jobs.SurrealStore do
         "claimed_at" => encode_datetime(job.claimed_at),
         "expected_lease_expires_at" => encode_datetime(job.lease_expires_at),
         "error" => failed_job.error,
+        "status" => status,
         "completed_at" => encode_datetime(failed_job.completed_at),
         "cleared_lease" => nil
       }
@@ -405,7 +417,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
 
   def fail_processing_if_current(
         %Job{} = job,
-        _error
+        _error,
+        _status
       ) do
     {:error,
      {
@@ -461,7 +474,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
           {:ok, stored} ->
             if stored.user_id == requested.user_id and
                  stored.conversation_id == requested.conversation_id and
-                 stored.message == requested.message do
+                 stored.message == requested.message and
+                 stored.workflow_contract == requested.workflow_contract and
+                 stored.workflow_contract_hash == requested.workflow_contract_hash do
               {:ok, stored}
             else
               {:error, :submission_conflict}
@@ -576,15 +591,19 @@ defmodule ItsmBackend.Jobs.SurrealStore do
           | {:error, term()}
   def update(%Job{} = job) do
     statement = """
-    UPDATE ONLY type::record($table, $id)
+    UPDATE type::record($table, $id)
     CONTENT $data
+    WHERE (workflow_contract ?? NULL) = $workflow_contract
+      AND (workflow_contract_hash ?? NULL) = $workflow_contract_hash
     RETURN AFTER;
     """
 
     params = %{
       "table" => @table,
       "id" => job.id,
-      "data" => serialize(job)
+      "data" => serialize(job),
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash
     }
 
     with {:ok, response} <-
@@ -605,6 +624,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     statement = """
     UPDATE type::record($table, $id) CONTENT $data
     WHERE status = "processing" AND attempts = $attempts
+      AND (workflow_contract ?? NULL) = $workflow_contract
+      AND (workflow_contract_hash ?? NULL) = $workflow_contract_hash
     RETURN AFTER;
     """
 
@@ -612,7 +633,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       "table" => @table,
       "id" => job.id,
       "data" => serialize(job),
-      "attempts" => job.attempts
+      "attempts" => job.attempts,
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash
     }
 
     with {:ok, response} <- Surreal.query(statement, params),
@@ -633,6 +656,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     UPDATE type::record($table, $id) CONTENT $data
     WHERE status = "waiting_approval" AND attempts = $attempts
       AND proposed_tool = $proposal
+      AND (workflow_contract ?? NULL) = $workflow_contract
+      AND (workflow_contract_hash ?? NULL) = $workflow_contract_hash
     RETURN AFTER;
     """
 
@@ -641,7 +666,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       "id" => job.id,
       "data" => serialize(job),
       "attempts" => job.attempts,
-      "proposal" => job.proposed_tool
+      "proposal" => job.proposed_tool,
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash
     }
 
     with {:ok, response} <- Surreal.query(statement, params),
@@ -666,6 +693,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     UPDATE type::record($table, $id) CONTENT $data
     WHERE status = "waiting_approval" AND attempts = $attempts
       AND proposed_tool = $proposal
+      AND (workflow_contract ?? NULL) = $workflow_contract
+      AND (workflow_contract_hash ?? NULL) = $workflow_contract_hash
     RETURN AFTER;
     """
 
@@ -674,7 +703,9 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       "id" => previous.id,
       "data" => serialize(next),
       "attempts" => previous.attempts,
-      "proposal" => previous.proposed_tool
+      "proposal" => previous.proposed_tool,
+      "workflow_contract" => next.workflow_contract,
+      "workflow_contract_hash" => next.workflow_contract_hash
     }
 
     with {:ok, response} <- Surreal.query(statement, params),
@@ -695,6 +726,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       "user_id" => job.user_id,
       "conversation_id" => job.conversation_id,
       "message" => job.message,
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash,
       "status" => job.status,
       "attempts" => job.attempts,
       "created_at" => encode_datetime(job.created_at),
@@ -715,7 +748,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
 
   defp deserialize(record)
        when is_map(record) do
-    with {:ok, created_at} <-
+    with :ok <-
+           WorkflowContract.validate_binding(
+             record["workflow_contract"],
+             record["workflow_contract_hash"]
+           ),
+         {:ok, created_at} <-
            decode_datetime(
              Map.get(
                record,
@@ -765,6 +803,8 @@ defmodule ItsmBackend.Jobs.SurrealStore do
              record,
              "message"
            ),
+         workflow_contract: record["workflow_contract"],
+         workflow_contract_hash: record["workflow_contract_hash"],
          status:
            Map.fetch!(
              record,

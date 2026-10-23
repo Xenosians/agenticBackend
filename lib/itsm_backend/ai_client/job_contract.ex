@@ -10,6 +10,7 @@ defmodule ItsmBackend.AIClient.JobContract do
   """
 
   alias ItsmBackend.Contracts
+  alias ItsmBackend.Jobs.WorkflowContract
 
   # ------------------------------------------------------------
   # Execute request
@@ -30,6 +31,12 @@ defmodule ItsmBackend.AIClient.JobContract do
         message,
         context
       ) do
+    build_execute_request(job_id, attempt, user_id, message, context, nil)
+  end
+
+  @spec build_execute_request(term(), term(), term(), term(), term(), term()) ::
+          {:ok, map()} | {:error, {:invalid_ai_job_execute_request, term()}}
+  def build_execute_request(job_id, attempt, user_id, message, context, workflow_binding) do
     payload = %{
       "job_id" => job_id,
       "attempt" => attempt,
@@ -43,11 +50,27 @@ defmodule ItsmBackend.AIClient.JobContract do
         value -> Map.put(payload, "context", value)
       end
 
-    case Contracts.validate(:ai_job_execute_request, payload) do
-      :ok -> {:ok, payload}
+    with {:ok, payload} <- put_workflow_binding(payload, workflow_binding),
+         :ok <- Contracts.validate(:ai_job_execute_request, payload) do
+      {:ok, payload}
+    else
       {:error, reason} -> {:error, {:invalid_ai_job_execute_request, reason}}
     end
   end
+
+  defp put_workflow_binding(payload, nil), do: {:ok, payload}
+
+  defp put_workflow_binding(
+         payload,
+         %{"workflow_contract" => contract, "workflow_contract_hash" => hash} = binding
+       )
+       when map_size(binding) == 2 and not is_nil(contract) do
+    with :ok <- WorkflowContract.validate_binding(contract, hash) do
+      {:ok, Map.merge(payload, binding)}
+    end
+  end
+
+  defp put_workflow_binding(_, _), do: {:error, :invalid_workflow_binding}
 
   # ------------------------------------------------------------
   # Execute acknowledgement

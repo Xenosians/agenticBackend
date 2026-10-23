@@ -8,6 +8,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 
 - Registration, email verification, login, password reset, session restoration, and session revocation.
 - User-owned chats, history, and durable AI jobs.
+- Optional reviewed workflow contracts bind requested operations and targets to the same durable submission, so incomplete plans can be rejected before tool dispatch.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
 - Authenticated WebSocket status updates for the browser and bounded progress events from the AI runtime, with REST recovery after reconnect.
@@ -83,7 +84,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Integration status | `GET /api/v1/integrations` |
 | Internal AI protocol | `/api/internal/v1/*` |
 
-The current v2 public job contract includes `pending`, `processing`, `waiting_approval`, `completed`, `failed`, `denied`, and `outcome_unknown`. Legacy v1 routes remain available. See the [v1 contract guide](contracts/v1/readme.md) and [v2 schemas](contracts/v2) before changing shared payloads.
+The current v2 public job contract includes `pending`, `processing`, `waiting_approval`, `completed`, `failed`, `denied`, and `outcome_unknown`. Legacy v1 routes remain available. See the [v1 contract guide](contracts/v1/readme.md) and [v2 schemas](contracts/v2) before changing shared payloads. An optional [requested workflow contract](docs/requested-workflow.md) records explicitly reviewed steps; its server-computed digest remains bound to submission identity, history, queue dispatch and approvals.
 
 Approval decisions require the authenticated owner and browser CSRF protection.
 Human rejection appears as `denied` with an explicit user-rejection explanation

@@ -74,6 +74,8 @@ defmodule ItsmBackend.Chats do
     user_turn = %{
       "role" => "user",
       "content" => job.message,
+      "workflow_contract" => job.workflow_contract,
+      "workflow_contract_hash" => job.workflow_contract_hash,
       "job_id" => job.id,
       "created_at" => encode_time(job.created_at),
       "status" => ItsmBackend.Jobs.Lifecycle.wire_status(job.status, version)

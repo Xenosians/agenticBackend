@@ -64,13 +64,19 @@ defmodule ItsmBackend.AIClient.HTTP do
         message,
         context
       ) do
+    execute_job(job_id, attempt, user_id, message, context, nil)
+  end
+
+  @impl true
+  def execute_job(job_id, attempt, user_id, message, context, workflow_binding) do
     with {:ok, payload} <-
            JobContract.build_execute_request(
              job_id,
              attempt,
              user_id,
              message,
-             context
+             context,
+             workflow_binding
            ) do
       execute_validated_job(job_id, attempt, payload)
     end

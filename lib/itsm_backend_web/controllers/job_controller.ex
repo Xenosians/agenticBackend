@@ -44,10 +44,17 @@ defmodule ItsmBackendWeb.JobController do
              "user_id" => user["user_id"],
              "conversation_id" => chat["chat_id"],
              "message" => payload["message"],
+             "workflow_contract" => payload["workflow_contract"],
              "submission_id" => payload["submission_id"]
            }),
          {:ok, response} <-
-           PublicContract.build_create_response(job.id, job.status, payload["submission_id"]) do
+           PublicContract.build_create_response(
+             job.id,
+             job.status,
+             payload["submission_id"],
+             job.workflow_contract,
+             job.workflow_contract_hash
+           ) do
       conn
       |> put_status(:accepted)
       |> json(response)
@@ -66,7 +73,7 @@ defmodule ItsmBackendWeb.JobController do
           conn,
           :conflict,
           "submission_conflict",
-          "This submission identity already belongs to a different chat or message. Reopen the original chat to check its saved job."
+          "This submission identity already belongs to a different chat, message or workflow. Reopen the original chat to check its saved job."
         )
 
       {:error, {:submission_outcome_unknown, _reason}} ->

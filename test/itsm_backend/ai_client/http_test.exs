@@ -3,6 +3,34 @@ defmodule ItsmBackend.AIClient.HTTPTest do
 
   alias ItsmBackend.AIClient.HTTP
 
+  test "workflow execution transports the exact contract and digest to the AI service" do
+    binding = ItsmBackend.WorkflowContractFixture.binding()
+    context = [%{"role" => "user", "content" => "Reviewed context"}]
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.body_params["workflow_contract"] == binding["workflow_contract"]
+      assert conn.body_params["workflow_contract_hash"] == binding["workflow_contract_hash"]
+      assert conn.body_params["context"] == context
+
+      json_response(conn, 202, %{
+        job_id: "workflow-job",
+        attempt: 2,
+        status: "accepted",
+        duplicate: false
+      })
+    end)
+
+    assert {:ok, _} =
+             HTTP.execute_job(
+               "workflow-job",
+               2,
+               "owner",
+               "Perform reviewed request",
+               context,
+               binding
+             )
+  end
+
   # ------------------------------------------------------------
   # Test configuration + Req transport isolation
   # ------------------------------------------------------------
