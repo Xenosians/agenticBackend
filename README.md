@@ -128,4 +128,3 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - [Browser and AI WebSocket protocol](docs/job-websocket.md)
 - [Dependent approval validation](lib/itsm_backend/jobs/workflow_continuation.ex)
 - [Extension proxy](lib/itsm_backend_web/controllers/extension_controller.ex)
-- [Development guidelines](AGENTS.md)
