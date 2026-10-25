@@ -5,6 +5,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
   import ExUnit.CaptureLog
 
   alias ItsmBackend.Jobs
+  alias ItsmBackend.AIClient.JobContract
   alias ItsmBackend.Jobs.{Job, QueueWorker, SurrealStore}
   alias ItsmBackend.JobQueueTestSupport
   alias ItsmBackend.WorkflowContractFixture, as: Fixture
@@ -15,10 +16,11 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
   @test_cleanup_error "Expired processing row cleaned during rejection test setup."
 
   setup do
-    keys = [:ai_client, :rejection_test_pid, :rejection_test_status]
+    keys = [:ai_client, :rejection_test_pid, :rejection_test_status, :rejection_test_error]
     previous = Map.new(keys, &{&1, Application.fetch_env(:itsm_backend, &1)})
     Application.put_env(:itsm_backend, :ai_client, __MODULE__)
     Application.put_env(:itsm_backend, :rejection_test_pid, self())
+    Application.delete_env(:itsm_backend, :rejection_test_error)
     JobQueueTestSupport.drain_expired_processing!(@test_cleanup_error)
 
     on_exit(fn ->
@@ -55,9 +57,15 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
       {:rejected_dispatch, job_id, attempt, binding}
     )
 
-    {:error,
-     {:ai_service_error, Application.fetch_env!(:itsm_backend, :rejection_test_status),
-      %{"detail" => @private_body}}}
+    case Application.fetch_env(:itsm_backend, :rejection_test_error) do
+      {:ok, reason} ->
+        {:error, reason}
+
+      :error ->
+        {:error,
+         {:ai_service_error, Application.fetch_env!(:itsm_backend, :rejection_test_status),
+          %{"detail" => @private_body}}}
+    end
   end
 
   for status <- [400, 401, 403, 404, 405, 413, 415, 422] do
@@ -180,6 +188,114 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
     # Retire only this test fixture, so another test cannot claim its pending row.
     assert {:ok, retired} = Job.transition(pending, "failed")
     assert {:ok, _} = SurrealStore.update(retired)
+  end
+
+  test "an unexpected HTTP 200 acknowledgement logs no response body and remains ambiguous" do
+    assert_ambiguous_sanitized_reason!(
+      {:unexpected_ai_ack, 200, %{"detail" => @private_body}},
+      "{:unexpected_ai_ack, 200}"
+    )
+  end
+
+  test "a malformed HTTP 202 body logs no validation input and remains ambiguous" do
+    assert {:error, reason} = JobContract.validate_accepted("fixture-job", 1, @private_body)
+
+    assert_ambiguous_sanitized_reason!(
+      reason,
+      "{:invalid_ai_job_ack, :invalid_validation_input}"
+    )
+  end
+
+  test "a context projection failure logs no reflected context and keeps its known requeue" do
+    Application.put_env(
+      :itsm_backend,
+      :rejection_test_error,
+      {:context_projection_failed, {:invalid_context, @private_body}}
+    )
+
+    job = pending_job!()
+    binding = workflow_binding(job)
+
+    log =
+      capture_log(fn ->
+        worker = start_worker!()
+        assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
+        assert id == job.id
+        assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+        assert {:ok, pending} = Jobs.get(id)
+        assert pending.status == "pending"
+        assert pending.attempts == 1
+        assert workflow_binding(pending) == binding
+
+        # Retire only this fixture before another tick can requeue its request.
+        assert {:ok, retired} = Job.transition(pending, "failed")
+        assert {:ok, _} = SurrealStore.update(retired)
+      end)
+
+    refute log =~ @private_body
+    assert log =~ "reason=context_projection_failed"
+  end
+
+  for {name, reason, summary} <- [
+        {"schema errors", {:invalid_ai_job_ack, :contract_violation, %{value: @private_body}},
+         "{:invalid_ai_job_ack, :contract_violation}"},
+        {"job identity errors", {:invalid_ai_job_ack, :job_id_mismatch, "fixture", @private_body},
+         "{:invalid_ai_job_ack, :job_id_mismatch}"},
+        {"attempt errors", {:invalid_ai_job_ack, :attempt_mismatch, 1, @private_body},
+         "{:invalid_ai_job_ack, :attempt_mismatch}"},
+        {"unknown acknowledgement errors", {:invalid_ai_job_ack, @private_body, @private_body},
+         ":invalid_ai_job_ack"},
+        {"request validation errors", {:invalid_ai_job_execute_request, %{value: @private_body}},
+         ":invalid_ai_job_execute_request"},
+        {"transport errors", {:request_failed, %{request: @private_body}}, ":request_failed"},
+        {"unexpected status values", {:unexpected_ai_ack, @private_body, @private_body},
+         "{:unexpected_ai_ack, :invalid_http_status}"},
+        {"server error bodies", {:ai_service_error, 500, @private_body},
+         "{:ai_service_error, 500}"},
+        {"unrecognized payloads", %{error: @private_body}, ":unclassified_ai_dispatch_failure"}
+      ] do
+    test "#{name} have bounded logs without changing the ambiguous disposition" do
+      assert_ambiguous_sanitized_reason!(unquote(Macro.escape(reason)), unquote(summary))
+    end
+  end
+
+  defp assert_ambiguous_sanitized_reason!(reason, expected_summary) do
+    Application.put_env(:itsm_backend, :rejection_test_error, reason)
+    job = pending_job!()
+    binding = workflow_binding(job)
+
+    log =
+      capture_log(fn ->
+        worker = start_worker!()
+        assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
+        assert id == job.id
+        assert %{inflight_job_id: ^id, undispatched_failure: nil} = :sys.get_state(worker)
+        assert {:ok, processing} = Jobs.get(id)
+        assert processing.status == "processing"
+        assert processing.error == nil
+        assert processing.attempts == 1
+        assert workflow_binding(processing) == binding
+
+        send(worker, :tick)
+        _ = :sys.get_state(worker)
+        refute_receive {:rejected_dispatch, ^id, _, _}
+        assert {:ok, unchanged} = Jobs.get(id)
+        assert unchanged == processing
+
+        assert {:ok, _} =
+                 SurrealStore.update(%{processing | lease_expires_at: ~U[2000-01-01 00:00:00Z]})
+
+        send(worker, :tick)
+        assert %{inflight_job_id: nil} = :sys.get_state(worker)
+        refute_receive {:rejected_dispatch, ^id, _, _}
+        assert {:ok, unresolved} = Jobs.get(id)
+        assert unresolved.status == "outcome_unknown"
+        assert unresolved.attempts == 1
+        assert workflow_binding(unresolved) == binding
+      end)
+
+    refute log =~ @private_body
+    assert log =~ "reason=#{expected_summary}"
   end
 
   defp pending_job! do

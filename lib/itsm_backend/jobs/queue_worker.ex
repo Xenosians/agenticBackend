@@ -237,11 +237,11 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           | inflight_job_id: job.id
         }
 
-      {:error, {:context_projection_failed, reason}} ->
+      {:error, {:context_projection_failed, _reason}} ->
         Logger.error(
           "Failed to project bounded chat context " <>
             "job_id=#{job.id} " <>
-            "reason=#{inspect(reason)}"
+            "reason=context_projection_failed"
         )
 
         # No AI dispatch occurred, so this pre-dispatch failure is safe
@@ -298,10 +298,39 @@ defmodule ItsmBackend.Jobs.QueueWorker do
     end
   end
 
-  defp dispatch_error_summary({:ai_service_error, status, _body}),
-    do: {:ai_service_error, status}
+  # Adapter errors and schema diagnostics can contain complete response bodies,
+  # reflected input values or request/exception metadata. Only explicit bounded
+  # protocol tags and real HTTP status integers may cross the logging boundary.
+  defp dispatch_error_summary({category, status, _body})
+       when category in [:ai_service_error, :unexpected_ai_ack] do
+    if is_integer(status) and status in 100..599,
+      do: {category, status},
+      else: {category, :invalid_http_status}
+  end
 
-  defp dispatch_error_summary(reason), do: reason
+  defp dispatch_error_summary(reason)
+       when is_tuple(reason) and tuple_size(reason) > 0 and elem(reason, 0) == :invalid_ai_job_ack do
+    subtype = if tuple_size(reason) > 1, do: elem(reason, 1)
+
+    if subtype in [
+         :invalid_validation_input,
+         :contract_violation,
+         :job_id_mismatch,
+         :attempt_mismatch
+       ],
+       do: {:invalid_ai_job_ack, subtype},
+       else: :invalid_ai_job_ack
+  end
+
+  defp dispatch_error_summary({:invalid_ai_job_execute_request, _details}),
+    do: :invalid_ai_job_execute_request
+
+  defp dispatch_error_summary({:request_failed, _details}), do: :request_failed
+
+  defp dispatch_error_summary({:ai_client_missing_context_callback, _client}),
+    do: :ai_client_missing_context_callback
+
+  defp dispatch_error_summary(_reason), do: :unclassified_ai_dispatch_failure
 
   defp persist_undispatched_failure(%Job{} = job, state) do
     case Jobs.fail_processing_if_current(job, job.error, "failed") do
