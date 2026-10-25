@@ -4,17 +4,20 @@ defmodule ItsmBackend.Jobs.WorkflowQueueDispatchTest do
 
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.{Events, Job, QueueWorker, SurrealStore}
+  alias ItsmBackend.JobQueueTestSupport
   alias ItsmBackendWeb.StorageFaultProxy
 
   # The proxy sees statements after parameter binding, where `$status` has
   # become a bound decode expression. Match the statement's shape instead.
   @failed_disposition ~r/SET\s+status = [^,]+,\s+error = /
+  @test_cleanup_error "Expired processing row cleaned during workflow queue test setup."
 
   setup do
     original_client = Application.fetch_env!(:itsm_backend, :ai_client)
     original_pid = Application.get_env(:itsm_backend, :workflow_queue_test_pid)
     Application.put_env(:itsm_backend, :ai_client, __MODULE__)
     Application.put_env(:itsm_backend, :workflow_queue_test_pid, self())
+    JobQueueTestSupport.drain_expired_processing!(@test_cleanup_error)
 
     on_exit(fn ->
       Application.put_env(:itsm_backend, :ai_client, original_client)

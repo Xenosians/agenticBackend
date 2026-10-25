@@ -38,6 +38,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   @workflow_client_error "workflow_client_unsupported: The configured AI client does not support " <>
                            "reviewed workflows. No AI execution was dispatched."
 
+  # Request validation, internal authentication and endpoint negotiation reject
+  # the request before the AI endpoint schedules work. Retrying the unchanged
+  # durable request cannot repair these failures. A timeout/conflict response is
+  # not proof that work was rejected and must retain the ambiguous-outcome path.
+  @permanent_rejection_statuses [400, 401, 403, 404, 405, 413, 415, 422]
+
   # ------------------------------------------------------------
   # Public API
   # ------------------------------------------------------------
@@ -247,20 +253,31 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         # The compatibility boundary verified that no workflow callback exists;
         # no model request or tool operation was invoked. Persist a known failure
         # rather than waiting for an execution lease and inventing uncertainty.
-        persist_undispatched_failure(job, state)
+        persist_undispatched_failure(Job.put_error(job, @workflow_client_error), state)
+
+      {:error, {:ai_service_error, status, _body}}
+      when status in @permanent_rejection_statuses ->
+        Logger.warning("AI rejected durable request job_id=#{job.id} status=#{status}")
+
+        # Neither persist nor log the service body: validation/auth responses
+        # can contain submitted context or infrastructure details.
+        error =
+          "ai_request_rejected: AI refused this request before execution (HTTP #{status}). " <>
+            "Correct the request or service configuration before submitting new work."
+
+        persist_undispatched_failure(Job.put_error(job, error), state)
 
       {:error,
        {
          :ai_service_error,
          status,
-         reason
+         _reason
        }}
-      when status in 400..499 ->
+      when status == 429 ->
         Logger.warning(
           "AI rejected job " <>
             "job_id=#{job.id} " <>
-            "status=#{status} " <>
-            "reason=#{inspect(reason)}"
+            "status=#{status}"
         )
 
         safely_requeue(job)
@@ -271,7 +288,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         Logger.error(
           "Ambiguous AI dispatch failure " <>
             "job_id=#{job.id} " <>
-            "reason=#{inspect(reason)}"
+            "reason=#{inspect(dispatch_error_summary(reason))}"
         )
 
         %{
@@ -281,8 +298,13 @@ defmodule ItsmBackend.Jobs.QueueWorker do
     end
   end
 
+  defp dispatch_error_summary({:ai_service_error, status, _body}),
+    do: {:ai_service_error, status}
+
+  defp dispatch_error_summary(reason), do: reason
+
   defp persist_undispatched_failure(%Job{} = job, state) do
-    case Jobs.fail_processing_if_current(job, @workflow_client_error, "failed") do
+    case Jobs.fail_processing_if_current(job, job.error, "failed") do
       {:ok, %Job{status: "failed"}} ->
         %{state | inflight_job_id: nil, undispatched_failure: nil}
 
@@ -293,7 +315,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
       {:error, reason} ->
         Logger.error(
-          "Failed to persist undispatched workflow failure job_id=#{job.id} reason=#{inspect(reason)}"
+          "Failed to persist rejected AI job job_id=#{job.id} reason=#{inspect(reason)}"
         )
 
         # Retain only the exact failed claim. A later tick retries persistence,
