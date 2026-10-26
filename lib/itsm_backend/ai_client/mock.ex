@@ -89,16 +89,21 @@ defmodule ItsmBackend.AIClient.Mock do
 
   @impl true
   def integrations do
+    # Shape of the AI service's provider setup readiness (configuration only).
     {:ok,
      %{
        "integrations" => [
          %{
            "id" => "openwrt",
            "name" => "OpenWrt",
+           "kind" => "provider",
+           "state" => "not_configured",
            "configured" => false,
+           "missing" => ["OPENWRT_BASE_URL", "OPENWRT_USERNAME", "OPENWRT_PASSWORD"],
+           "capabilities" => [],
+           "mode" => "read_only",
            "host" => nil,
-           "verify_tls" => true,
-           "mode" => "read_only_v1"
+           "verify_tls" => true
          }
        ]
      }}
