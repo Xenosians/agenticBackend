@@ -55,6 +55,9 @@ defmodule ItsmBackendWeb.Router do
 
     post "/v1/jobs/:id/reject", JobController, :reject
 
+    post "/v1/jobs/:id/feedback", JobFeedbackController, :create
+    get "/v1/feedback", JobFeedbackController, :index
+
     get "/v2/chats/:id/history", ChatController, :history
     get "/v2/jobs/:id", JobController, :show
     post "/v2/jobs/socket-token", SocketTokenController, :create
