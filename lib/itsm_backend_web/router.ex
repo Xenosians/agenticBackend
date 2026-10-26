@@ -58,6 +58,8 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/jobs/:id/feedback", JobFeedbackController, :create
     get "/v1/feedback", JobFeedbackController, :index
 
+    get "/v1/operations", OperationsController, :index
+
     get "/v2/chats/:id/history", ChatController, :history
     get "/v2/jobs/:id", JobController, :show
     post "/v2/jobs/socket-token", SocketTokenController, :create
@@ -84,6 +86,8 @@ defmodule ItsmBackendWeb.Router do
     post "/internal/v1/jobs/:id/heartbeat",
          JobHeartbeatController,
          :heartbeat
+
+    post "/internal/v1/jobs/:id/metrics", JobMetricController, :create
 
     post "/internal/v1/jobs/:id/completion",
          JobCompletionController,
