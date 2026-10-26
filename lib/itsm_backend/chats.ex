@@ -26,6 +26,66 @@ defmodule ItsmBackend.Chats do
 
   def list(user), do: SurrealStore.list_for_user(user["user_id"])
 
+  @search_query_max 200
+  @search_result_limit 50
+  # Saved turns read per search; the newest matches win when there are more.
+  @search_turn_limit 500
+
+  @doc """
+  The owner's active chats whose title or saved request text contains
+  `query`, matched case-insensitively as literal text. Newest chats first;
+  each result names what matched and, for a message, the matching turn.
+  """
+  def search(user, query) when is_binary(query) do
+    query = String.trim(query)
+
+    cond do
+      query == "" ->
+        {:error, :search_query_required}
+
+      String.length(query) > @search_query_max ->
+        {:error, :search_query_too_long}
+
+      true ->
+        needle = String.downcase(query)
+
+        with {:ok, chats} <- list(user),
+             {:ok, turns} <-
+               SurrealStore.matching_turns(user["user_id"], needle, @search_turn_limit) do
+          # Turns arrive newest first, so the first one kept per chat is its latest match.
+          latest_turn =
+            Enum.reduce(turns, %{}, fn turn, acc ->
+              Map.put_new(acc, turn["conversation_id"], turn["message"])
+            end)
+
+          results =
+            chats
+            |> Enum.flat_map(&search_result(&1, needle, latest_turn))
+            |> Enum.take(@search_result_limit)
+
+          {:ok, results}
+        end
+    end
+  end
+
+  def search(_user, _query), do: {:error, :search_query_required}
+
+  defp search_result(chat, needle, latest_turn) do
+    title = chat["title"] || ""
+    base = Map.take(chat, ["chat_id", "title", "updated_at"])
+
+    cond do
+      String.contains?(String.downcase(title), needle) ->
+        [Map.merge(base, %{"matched" => "title", "excerpt" => nil})]
+
+      Map.has_key?(latest_turn, chat["chat_id"]) ->
+        [Map.merge(base, %{"matched" => "message", "excerpt" => latest_turn[chat["chat_id"]]})]
+
+      true ->
+        []
+    end
+  end
+
   def get_authorized(user, chat_id) do
     with {:ok, chat} <- SurrealStore.get(chat_id),
          true <- is_map(chat) || {:error, :not_found},

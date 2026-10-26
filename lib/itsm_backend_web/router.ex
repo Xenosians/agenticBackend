@@ -31,6 +31,8 @@ defmodule ItsmBackendWeb.Router do
     # Durable user-owned chat threads.
     post "/v1/chats", ChatController, :create
     get "/v1/chats", ChatController, :index
+    # Before /v1/chats/:id, so "search" is never read as a chat id.
+    get "/v1/chats/search", ChatController, :search
     get "/v1/chats/:id", ChatController, :show
     get "/v1/chats/:id/history", ChatController, :history
     delete "/v1/chats/:id", ChatController, :delete

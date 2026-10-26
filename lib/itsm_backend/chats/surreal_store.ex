@@ -42,6 +42,27 @@ defmodule ItsmBackend.Chats.SurrealStore do
     end
   end
 
+  @doc """
+  One owner's saved turns whose request text contains `needle`. The needle is
+  a bound parameter compared case-insensitively as literal text.
+  """
+  def matching_turns(user_id, needle, limit) do
+    statement = """
+    SELECT conversation_id, message, created_at FROM job
+    WHERE user_id = $user_id
+      AND type::is_string(conversation_id)
+      AND string::contains(string::lowercase(message), $needle)
+    ORDER BY created_at DESC
+    LIMIT $limit;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{"user_id" => user_id, "needle" => needle, "limit" => limit}),
+         {:ok, rows} <- rows(results) do
+      {:ok, rows || []}
+    end
+  end
+
   def touch(chat_id, now) do
     statement = """
     UPDATE ONLY type::record($table, $id)

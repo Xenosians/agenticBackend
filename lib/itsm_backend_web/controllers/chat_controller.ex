@@ -10,6 +10,10 @@ defmodule ItsmBackendWeb.ChatController do
   request_contract(:index, [])
   request_contract(:show, [])
 
+  request_contract(:search,
+    required_query: ["q"]
+  )
+
   request_contract(:history,
     optional_query: ["limit"]
   )
@@ -44,6 +48,25 @@ defmodule ItsmBackendWeb.ChatController do
 
           {:error, _} ->
             conn |> put_status(:internal_server_error) |> json(%{error: "chat_lookup_failed"})
+        end
+
+      {:error, conn} ->
+        conn
+    end
+  end
+
+  def search(conn, params) do
+    case AuthRequest.require_authenticated(conn) do
+      {:ok, conn, ctx} ->
+        case Chats.search(ctx.user, Map.get(params, "q")) do
+          {:ok, results} ->
+            json(conn, %{results: results})
+
+          {:error, reason} when reason in [:search_query_required, :search_query_too_long] ->
+            conn |> put_status(:bad_request) |> json(%{error: Atom.to_string(reason)})
+
+          {:error, _} ->
+            conn |> put_status(:internal_server_error) |> json(%{error: "chat_search_failed"})
         end
 
       {:error, conn} ->
