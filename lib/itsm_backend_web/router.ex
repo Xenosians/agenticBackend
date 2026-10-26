@@ -57,6 +57,8 @@ defmodule ItsmBackendWeb.Router do
 
     post "/v1/jobs/:id/feedback", JobFeedbackController, :create
     get "/v1/feedback", JobFeedbackController, :index
+    get "/v1/feedback/review", FeedbackReviewController, :index
+    post "/v1/feedback/:id/review", FeedbackReviewController, :review
 
     get "/v1/operations", OperationsController, :index
 

@@ -12,6 +12,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
 - Owner feedback on a task's result (a critique, optionally with the correct result), saved once per submission identity for review with a copy of the request, task status, route, proposal and answer it describes. Feedback never changes the task, its approval, tool policy or a model.
+- A reviewer queue for that feedback: administrators (`AUTH_ADMIN_EMAILS`) list pending feedback oldest first and record one decision per record — `accepted` or `dismissed`, with a reason. Repeating the same decision returns it, a different one is a conflict, and a decision never changes the task, its approval, permissions or weights.
 - Authenticated WebSocket status updates for the browser and bounded progress events from the AI runtime, with REST recovery after reconnect.
 - A durable account → Jira ticket workflow with separately bound approvals, verified provider results, and completion notifications through the existing mail outbox.
 - Authenticated model/harness/dataset commands proxied to the AI service; ownership comes from the session and mutations require CSRF.
@@ -82,6 +83,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Job creation | `POST /api/v1/jobs` |
 | Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/chats/:id/history` |
 | Feedback on a task's result | `POST /api/v1/jobs/:id/feedback`, `GET /api/v1/feedback` |
+| Feedback review (administrators) | `GET /api/v1/feedback/review[?status=all]`, `POST /api/v1/feedback/:id/review` |
 | User extensions | `GET/POST /api/v1/extensions` |
 | Integration status | `GET /api/v1/integrations` |
 | Internal AI protocol | `/api/internal/v1/*` |

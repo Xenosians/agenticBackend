@@ -47,6 +47,81 @@ defmodule ItsmBackend.JobFeedback.SurrealStore do
     end
   end
 
+  @doc "Feedback for review, oldest first; `nil` status lists every record."
+  def list_for_review(review_status, limit) do
+    filter = if review_status, do: "WHERE review_status = $review_status", else: ""
+
+    statement = """
+    SELECT * FROM job_feedback #{filter}
+    ORDER BY created_at ASC
+    LIMIT $limit;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{"review_status" => review_status, "limit" => limit}),
+         {:ok, rows} <- rows(results) do
+      {:ok, Enum.map(rows || [], &public/1)}
+    end
+  end
+
+  @doc """
+  Records a decision once: the UPDATE only applies while the record is still
+  pending, so concurrent reviewers cannot overwrite each other. A repeat of
+  the stored decision returns it; any other decision is a conflict.
+  """
+  def record_review(feedback_id, review) do
+    statement = """
+    UPDATE ONLY type::record($table, $id)
+    SET review_status = $decision, review = $review
+    WHERE review_status = "pending_review"
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => feedback_id,
+      "decision" => review["decision"],
+      "review" => Surreal.datetime_fields(review, ["reviewed_at"])
+    }
+
+    case Surreal.query(statement, params) do
+      {:ok, results} ->
+        case single(results) do
+          {:ok, record} when is_map(record) -> {:ok, public(record)}
+          {:ok, nil} -> existing_review(feedback_id, review)
+          {:error, reason} -> {:error, {:review_outcome_unknown, reason}}
+        end
+
+      {:error, reason} ->
+        # The write may or may not have applied; read back before answering.
+        case existing_review(feedback_id, review) do
+          {:ok, record} -> {:ok, record}
+          {:error, :review_conflict} -> {:error, :review_conflict}
+          {:error, :feedback_not_found} -> {:error, :feedback_not_found}
+          _ -> {:error, {:review_outcome_unknown, reason}}
+        end
+    end
+  end
+
+  defp existing_review(feedback_id, review) do
+    case get(feedback_id) do
+      {:ok, nil} ->
+        {:error, :feedback_not_found}
+
+      {:ok, %{"review" => %{} = stored} = record} ->
+        if Map.take(stored, ["decision", "reason", "reviewer_id"]) ==
+             Map.take(review, ["decision", "reason", "reviewer_id"]),
+           do: {:ok, record},
+           else: {:error, :review_conflict}
+
+      {:ok, _still_pending} ->
+        {:error, :review_outcome_unknown}
+
+      {:error, reason} ->
+        {:error, {:review_outcome_unknown, reason}}
+    end
+  end
+
   defp create(feedback) do
     statement = "CREATE ONLY type::record($table, $id) CONTENT $feedback RETURN AFTER;"
 

@@ -6,14 +6,14 @@ defmodule ItsmBackendWeb.AuthTestSupport do
   alias ItsmBackend.Auth
   alias ItsmBackend.Chats
 
-  def authenticated_identity! do
+  def authenticated_identity!(email \\ nil) do
     suffix =
       6
       |> :crypto.strong_rand_bytes()
       |> Base.encode16(case: :lower)
 
     email =
-      "test-#{suffix}@example.test"
+      email || "test-#{suffix}@example.test"
 
     password =
       "correct horse battery #{suffix}!"

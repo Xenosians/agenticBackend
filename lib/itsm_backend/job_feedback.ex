@@ -22,6 +22,11 @@ defmodule ItsmBackend.JobFeedback do
   # awaiting a decision, or a final outcome.
   @reviewable_statuses ~w(waiting_approval completed failed denied outcome_unknown reconciliation_required)
   @submission_identity ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
+  @feedback_identity ~r/\A[0-9a-f]{32}\z/
+  # A reviewer's decision. Accepted feedback is evidence a reviewer may later
+  # curate into evaluation or training data; nothing is applied automatically.
+  @decisions ~w(accepted dismissed)
+  @review_filters %{"pending" => "pending_review", "all" => nil}
 
   @doc """
   Saves the owner's feedback on a task once per submission identity.
@@ -45,6 +50,60 @@ defmodule ItsmBackend.JobFeedback do
   @doc "The user's feedback, newest first."
   def list(user), do: SurrealStore.list_for_user(user["user_id"], @list_limit)
 
+  @doc """
+  The reviewer queue: pending feedback (or every record with `"all"`),
+  oldest first so the longest-waiting feedback is reviewed first.
+  """
+  def review_queue(reviewer, filter) do
+    with :ok <- require_reviewer(reviewer),
+         {:ok, status} <- review_filter(filter) do
+      SurrealStore.list_for_review(status, @list_limit)
+    end
+  end
+
+  @doc """
+  Records a reviewer's decision once. Repeating the same decision returns it;
+  a different decision is a conflict. The task is never changed.
+  """
+  def review(reviewer, feedback_id, params) when is_map(params) do
+    with :ok <- require_reviewer(reviewer),
+         true <- valid_feedback_id?(feedback_id) || {:error, :feedback_not_found},
+         {:ok, decision} <- decision(params["decision"]),
+         {:ok, reason} <- review_reason(params["reason"]) do
+      SurrealStore.record_review(feedback_id, %{
+        "decision" => decision,
+        "reason" => reason,
+        "reviewer_id" => reviewer["user_id"],
+        "reviewed_at" =>
+          DateTime.utc_now() |> DateTime.truncate(:microsecond) |> DateTime.to_iso8601()
+      })
+    end
+  end
+
+  def review(_reviewer, _feedback_id, _params), do: {:error, :invalid_review}
+
+  defp require_reviewer(%{"role" => "admin"}), do: :ok
+  defp require_reviewer(_user), do: {:error, :forbidden}
+
+  defp review_filter(nil), do: {:ok, @review_filters["pending"]}
+
+  defp review_filter(value) when is_map_key(@review_filters, value),
+    do: {:ok, @review_filters[value]}
+
+  defp review_filter(_value), do: {:error, :invalid_review_filter}
+
+  defp valid_feedback_id?(value), do: is_binary(value) and Regex.match?(@feedback_identity, value)
+
+  defp decision(value) when value in @decisions, do: {:ok, value}
+  defp decision(_value), do: {:error, :invalid_review}
+
+  defp review_reason(value) do
+    case text(value, required: true) do
+      {:ok, reason} -> {:ok, reason}
+      _ -> {:error, :invalid_review}
+    end
+  end
+
   defp validate(params) do
     with {:ok, submission_id} <- submission_id(params["submission_id"]),
          {:ok, note} <- text(params["note"], required: true),
@@ -62,6 +121,7 @@ defmodule ItsmBackend.JobFeedback do
   defp submission_id(_value), do: {:error, :invalid_feedback}
 
   defp text(nil, required: false), do: {:ok, nil}
+  defp text(nil, required: true), do: {:error, :invalid_feedback}
 
   defp text(value, required: required) when is_binary(value) do
     value = String.trim(value)

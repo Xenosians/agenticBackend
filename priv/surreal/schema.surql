@@ -19,6 +19,7 @@ DEFINE INDEX IF NOT EXISTS auth_session_user_id ON auth_session FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS auth_token_user_purpose ON auth_token FIELDS user_id, purpose;
 DEFINE INDEX IF NOT EXISTS chat_user_id ON chat FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS job_feedback_user_created ON job_feedback FIELDS user_id, created_at;
+DEFINE INDEX IF NOT EXISTS job_feedback_review_created ON job_feedback FIELDS review_status, created_at;
 DEFINE INDEX IF NOT EXISTS job_owner_created ON job FIELDS user_id, created_at;
 DEFINE INDEX IF NOT EXISTS job_metric_owner_attempt ON job_metric FIELDS user_id, job_id, attempt, recorded_at;
 DEFINE INDEX IF NOT EXISTS mail_outbox_status_next_attempt ON mail_outbox FIELDS status, next_attempt_at;
