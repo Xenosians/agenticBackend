@@ -5,9 +5,44 @@ defmodule ItsmBackendWeb.SessionController do
 
   request_contract(:index, [])
   request_contract(:revoke, [])
+  request_contract(:revoke_others, [])
 
   alias ItsmBackend.Auth
   alias ItsmBackendWeb.AuthRequest
+  alias ItsmBackendWeb.PublicError
+
+  def revoke_others(conn, params) do
+    case AuthRequest.require_authenticated(conn, csrf: true) do
+      {:ok, conn, ctx} ->
+        case if(map_size(params) == 0,
+               do: Auth.revoke_other_sessions(ctx.user["user_id"], ctx.session["session_id"]),
+               else: {:error, :invalid_request}
+             ) do
+          {:ok, count} ->
+            json(conn, %{status: "revoked", revoked_count: count})
+
+          {:error, :invalid_request} ->
+            PublicError.render(
+              conn,
+              :unprocessable_entity,
+              "invalid_request",
+              "This action takes no arguments."
+            )
+
+          {:error, _} ->
+            PublicError.render(
+              conn,
+              :service_unavailable,
+              "session_revoke_unconfirmed",
+              "Other sessions could not be confirmed as ended. Reload the session list before trying again.",
+              retryable: true
+            )
+        end
+
+      {:error, conn} ->
+        conn
+    end
+  end
 
   def index(conn, _params) do
     case AuthRequest.require_authenticated(conn) do

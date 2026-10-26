@@ -187,6 +187,79 @@ defmodule ItsmBackend.Auth.SurrealStore do
     end
   end
 
+  def set_task_completed_preference(user_id, enabled) do
+    statement = """
+    UPDATE ONLY type::record($table, $user_id)
+    SET notification_preferences.task_completed = $enabled
+    WHERE user_id = $user_id AND status = "active"
+    RETURN AFTER;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{
+             "table" => @user_table,
+             "user_id" => user_id,
+             "enabled" => enabled
+           }),
+         {:ok, user} <- single_or_nil(results) do
+      {:ok, user}
+    end
+  end
+
+  def revoke_other_sessions(user_id, current_session_id, now) do
+    statement = """
+    BEGIN TRANSACTION;
+    LET $current = SELECT * FROM ONLY type::record($table, $current_id);
+    IF $current = NONE OR $current.user_id != $user_id OR $current.session_id != $current_id
+      OR $current.revoked_at != $not_revoked OR $current.expires_at <= $now {
+      THROW 'current_session_inactive';
+    };
+    LET $revoked = UPDATE auth_session SET revoked_at = $now
+      WHERE user_id = $user_id AND session_id != $current_id
+        AND revoked_at = $not_revoked AND expires_at > $now
+      RETURN AFTER;
+    RETURN {revoked_sessions: $revoked};
+    COMMIT TRANSACTION;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{
+             "table" => @session_table,
+             "current_id" => current_session_id,
+             "user_id" => user_id,
+             "now" => Surreal.datetime(now),
+             "not_revoked" => nil
+           }),
+         [records] <-
+           for(
+             %{"status" => "OK", "result" => %{"revoked_sessions" => records}} <- results,
+             do: records
+           ),
+         true <-
+           is_list(records) and
+             Enum.all?(records, fn record ->
+               is_map(record) and record["user_id"] == user_id and
+                 is_binary(record["session_id"]) and record["session_id"] != current_session_id and
+                 same_time?(record["revoked_at"], now)
+             end),
+         true <- length(Enum.uniq_by(records, & &1["session_id"])) == length(records) do
+      {:ok, length(records)}
+    else
+      _ -> {:error, :session_revoke_unconfirmed}
+    end
+  end
+
+  defp same_time?(stored, expected) when is_binary(stored) do
+    with {:ok, left, _} <- DateTime.from_iso8601(stored),
+         {:ok, right, _} <- DateTime.from_iso8601(expected) do
+      DateTime.compare(left, right) == :eq
+    else
+      _ -> false
+    end
+  end
+
+  defp same_time?(_, _), do: false
+
   def create_token(token) do
     statement = """
     CREATE ONLY type::record($table, $id) CONTENT $token_record RETURN AFTER;

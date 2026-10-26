@@ -139,6 +139,10 @@ defmodule ItsmBackend.Auth do
     SurrealStore.revoke_session(session_id, user_id, now())
   end
 
+  def revoke_other_sessions(user_id, current_session_id) do
+    SurrealStore.revoke_other_sessions(user_id, current_session_id, now())
+  end
+
   @doc """
   Ends a session and confirms it can no longer authenticate.
 

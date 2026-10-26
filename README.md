@@ -7,6 +7,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 ## Features
 
 - Registration, email verification, login, password reset, session restoration, and session revocation.
+- Account controls: end other active sessions while keeping this one, and choose whether new completed tasks send automatic email. [API and notification scope](docs/account-controls.md).
 - User-owned chats, history, and durable AI jobs.
 - Optional reviewed workflow contracts bind requested operations and targets to the same durable submission, so incomplete plans can be rejected before tool dispatch.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.

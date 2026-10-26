@@ -26,7 +26,10 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/auth/forgot-password", AuthController, :forgot_password
     post "/v1/auth/reset-password", AuthController, :reset_password
     get "/v1/auth/sessions", SessionController, :index
+    post "/v1/auth/sessions/revoke-others", SessionController, :revoke_others
     post "/v1/auth/sessions/:id/revoke", SessionController, :revoke
+    get "/v1/auth/preferences", PreferenceController, :show
+    put "/v1/auth/preferences", PreferenceController, :update
 
     # Durable user-owned chat threads.
     post "/v1/chats", ChatController, :create

@@ -5,14 +5,15 @@ defmodule ItsmBackend.Jobs.JobNotifications do
   Notification content is derived only from durable job state and trusted
   backend metadata. No LLM-generated recommendation text is used.
 
-  Successful-task mail is sent unless `TASK_COMPLETION_MAIL_ENABLED` is
-  false. Approval, failure and reconciliation notices remain independent of
-  that switch, as do explicitly requested notifications and authentication mail.
+  Successful-task mail requires the deployment switch and the owner's optional
+  completion preference. Approval, failure and reconciliation notices remain
+  independent, as do explicitly requested notifications and authentication mail.
   """
 
   require Logger
 
   alias ItsmBackend.Auth.SurrealStore, as: AuthStore
+  alias ItsmBackend.Auth.Preferences
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.Mail.OutboxStore
   alias ItsmBackend.RuntimeConfig
@@ -59,31 +60,43 @@ defmodule ItsmBackend.Jobs.JobNotifications do
 
   defp enqueue_notification(%Job{} = job) do
     with {:ok, user} <- AuthStore.get_user(job.user_id),
-         {:ok, recipient} <- recipient_from_user(user) do
-      case recipient do
-        :not_applicable ->
-          {:ok, :not_applicable}
-
-        %{name: name, email: email} ->
-          {subject, text_body} = render(job)
-
-          OutboxStore.enqueue(%{
-            "dedupe_key" =>
-              [
-                "job",
-                job.id,
-                Integer.to_string(job.attempts),
-                job.status
-              ]
-              |> Enum.join(":"),
-            "kind" => "job_notification",
-            "recipient_name" => name,
-            "recipient_email" => email,
-            "subject" => subject,
-            "text_body" => text_body
-          })
-      end
+         {:ok, enabled} <- enabled_for_user(job, user),
+         {:ok, recipient} <- recipient_when_enabled(enabled, user) do
+      enqueue_for_recipient(job, recipient)
     end
+  end
+
+  defp enabled_for_user(%Job{status: "completed"}, user) when is_map(user) do
+    with {:ok, preferences} <- Preferences.from_user(user) do
+      {:ok, preferences["task_completed"]}
+    end
+  end
+
+  defp enabled_for_user(_job, _user), do: {:ok, true}
+  defp recipient_when_enabled(false, _user), do: {:ok, :disabled}
+  defp recipient_when_enabled(true, user), do: recipient_from_user(user)
+
+  defp enqueue_for_recipient(_job, :disabled), do: {:ok, :disabled}
+  defp enqueue_for_recipient(_job, :not_applicable), do: {:ok, :not_applicable}
+
+  defp enqueue_for_recipient(job, %{name: name, email: email}) do
+    {subject, text_body} = render(job)
+
+    OutboxStore.enqueue(%{
+      "dedupe_key" =>
+        [
+          "job",
+          job.id,
+          Integer.to_string(job.attempts),
+          job.status
+        ]
+        |> Enum.join(":"),
+      "kind" => "job_notification",
+      "recipient_name" => name,
+      "recipient_email" => email,
+      "subject" => subject,
+      "text_body" => text_body
+    })
   end
 
   defp recipient_from_user(%{"email" => email} = user) when is_binary(email) do

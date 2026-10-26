@@ -68,6 +68,7 @@ defmodule ItsmBackendWeb.Endpoint do
     methods: [
       "GET",
       "POST",
+      "PUT",
       "DELETE",
       "OPTIONS"
     ],

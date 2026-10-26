@@ -99,6 +99,67 @@ defmodule ItsmBackend.Jobs.JobNotificationsTest do
     assert stored["dedupe_key"] == "job:#{job.id}:1:completed"
   end
 
+  test "owner preference disables only new completion mail and preserves already queued mail", %{
+    identity: owner,
+    job: job
+  } do
+    alias ItsmBackend.Auth.Preferences
+    completed = %{job | status: "completed"}
+    assert {:ok, queued} = JobNotifications.enqueue(completed)
+
+    assert {:ok, %{"task_completed" => false}} =
+             Preferences.save(owner.user["user_id"], %{"task_completed" => false})
+
+    assert {:ok, :disabled} = JobNotifications.enqueue(%{completed | id: job.id <> "-disabled"})
+    assert {:ok, still_queued} = OutboxStore.get(queued["outbox_id"])
+    assert still_queued["status"] == "pending"
+
+    for status <- [
+          "waiting_approval",
+          "failed",
+          "denied",
+          "outcome_unknown",
+          "reconciliation_required"
+        ] do
+      assert {:ok, notice} = JobNotifications.enqueue(%{job | status: status})
+      assert notice["status"] == "pending"
+    end
+
+    assert {:ok, _} =
+             ItsmBackend.UserNotifications.enqueue(%{
+               "email" => owner.user["email"],
+               "message" => "Requested notice",
+               "dedupe_key" => "explicit-preference:#{job.id}"
+             })
+
+    assert {:ok, %{"task_completed" => true}} =
+             Preferences.save(owner.user["user_id"], %{"task_completed" => true})
+
+    assert {:ok, enabled} = JobNotifications.enqueue(%{completed | id: job.id <> "-enabled"})
+    assert enabled["status"] == "pending"
+    Application.put_env(:itsm_backend, :task_completion_mail, enabled: false)
+
+    assert {:ok, :disabled} =
+             JobNotifications.enqueue(%{completed | id: job.id <> "-master-disabled"})
+  end
+
+  test "invalid stored completion preference never sends or changes the task", %{
+    identity: owner,
+    job: job
+  } do
+    assert {:ok, _} =
+             Surreal.query(
+               "UPDATE ONLY type::record('app_user', $id) SET notification_preferences = $bad;",
+               %{"id" => owner.user["user_id"], "bad" => %{"task_completed" => "yes"}}
+             )
+
+    completed = %{job | status: "completed"}
+    assert {:error, :invalid_stored_preferences} = JobNotifications.enqueue(completed)
+    assert :ok = JobNotifications.enqueue_best_effort(completed)
+    assert {:ok, notice} = JobNotifications.enqueue(%{job | status: "failed"})
+    assert notice["status"] == "pending"
+  end
+
   test "human rejection and policy denial have distinct truthful notification text", %{job: job} do
     rejected = %{
       job
