@@ -22,6 +22,8 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/extensions", ExtensionController, :index
     post "/v1/extensions", ExtensionController, :command
     get "/v1/integrations", IntegrationController, :index
+    get "/v1/learning", LearningController, :index
+    post "/v1/learning/preflight", LearningController, :preflight
     post "/v1/auth/logout", AuthController, :logout
     post "/v1/auth/forgot-password", AuthController, :forgot_password
     post "/v1/auth/reset-password", AuthController, :reset_password
