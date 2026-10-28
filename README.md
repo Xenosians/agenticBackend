@@ -9,6 +9,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Registration, email verification, login, password reset, session restoration, and session revocation.
 - Account controls: end other active sessions while keeping this one, and choose whether new completed tasks send automatic email. [API and notification scope](docs/account-controls.md).
 - User-owned chats, history, and durable AI jobs. Chats support owner-scoped rename/pin, pinned-first lists and automatic titles from the first saved request. Explicit names are preserved; uncertain metadata writes return an error and require readback.
+- Cited answers: an assistant history turn carries `references`, the citations of the reference passages its model was given (at most 10, no passage text). Only well-formed citations whose locator matches their own dataset, chunk and version are kept.
 - Optional reviewed workflow contracts bind requested operations and targets to the same durable submission, so incomplete plans can be rejected before tool dispatch.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.

@@ -192,11 +192,52 @@ defmodule ItsmBackend.Chats do
             "job_id" => job.id,
             "created_at" => encode_time(job.completed_at || job.claimed_at || job.created_at),
             "status" => ItsmBackend.Jobs.Lifecycle.wire_status(job.status, version),
-            "proposed_tool" => job.proposed_tool
+            "proposed_tool" => job.proposed_tool,
+            "references" => answer_references(job)
           }
         ]
     end
   end
+
+  @max_answer_references 10
+  @citation_keys ~w(locator dataset_id chunk sha256 content_sha256 source license)
+  @resource_id ~r/\A[a-f0-9]{32}\z/
+  @digest ~r/\A[a-f0-9]{64}\z/
+
+  # Citations of the reference passages the answer's model was given. Only
+  # well-formed citations whose locator matches their own identity are kept;
+  # passage text is never part of a citation.
+  defp answer_references(%{result: %{"references" => references}}) when is_list(references) do
+    references
+    |> Enum.filter(&valid_citation?/1)
+    |> Enum.uniq_by(& &1["locator"])
+    |> Enum.take(@max_answer_references)
+  end
+
+  defp answer_references(_job), do: []
+
+  defp valid_citation?(
+         %{
+           "locator" => locator,
+           "dataset_id" => dataset,
+           "chunk" => chunk,
+           "sha256" => version,
+           "content_sha256" => content,
+           "source" => source,
+           "license" => license
+         } = citation
+       )
+       when map_size(citation) == length(@citation_keys) and is_integer(chunk) and chunk > 0 and
+              is_binary(dataset) and is_binary(version) and is_binary(content) and
+              is_binary(source) and is_binary(license) do
+    Regex.match?(@resource_id, dataset) and Regex.match?(@digest, version) and
+      Regex.match?(@digest, content) and short_text?(source, 500) and short_text?(license, 200) and
+      locator == "dataset:#{dataset}#chunk:#{chunk}@#{version}"
+  end
+
+  defp valid_citation?(_), do: false
+
+  defp short_text?(value, limit), do: value != "" and String.length(value) <= limit
 
   defp assistant_content(%{status: status, error: error})
        when status in ["failed", "denied", "outcome_unknown", "reconciliation_required"] and
