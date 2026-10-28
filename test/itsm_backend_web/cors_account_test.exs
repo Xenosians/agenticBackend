@@ -35,11 +35,21 @@ defmodule ItsmBackendWeb.CorsAccountTest do
   end
 
   test "unsupported methods and headers remain outside the preflight grant" do
-    conn = preflight(@origin, "PATCH", "content-type,x-untrusted-header")
+    conn = preflight(@origin, "TRACE", "content-type,x-untrusted-header")
 
     assert response(conn, 204) == ""
-    refute "PATCH" in values(conn, "access-control-allow-methods")
+    refute "TRACE" in values(conn, "access-control-allow-methods")
     refute "x-untrusted-header" in values(conn, "access-control-allow-headers")
+  end
+
+  test "chat PATCH is granted only from configured origins with allowed headers" do
+    conn = preflight(@origin, "PATCH", "content-type,x-csrf-token")
+    assert response(conn, 204) == ""
+    assert "PATCH" in values(conn, "access-control-allow-methods")
+    assert get_resp_header(conn, "access-control-allow-origin") == [@origin]
+    refute "x-untrusted-header" in values(conn, "access-control-allow-headers")
+    foreign = preflight("https://untrusted.example.test", "PATCH", "content-type,x-csrf-token")
+    assert get_resp_header(foreign, "access-control-allow-origin") == []
   end
 
   test "CORS permission cannot replace authentication or cookie CSRF on the actual PUT" do

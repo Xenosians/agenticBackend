@@ -9,6 +9,7 @@ defmodule ItsmBackendWeb.ChatController do
 
   request_contract(:index, [])
   request_contract(:show, [])
+  request_contract(:update, optional_body: ["title", "pinned"])
 
   request_contract(:search,
     required_query: ["q"]
@@ -89,6 +90,33 @@ defmodule ItsmBackendWeb.ChatController do
 
           {:error, _} ->
             conn |> put_status(:internal_server_error) |> json(%{error: "chat_lookup_failed"})
+        end
+
+      {:error, conn} ->
+        conn
+    end
+  end
+
+  def update(conn, %{"id" => chat_id}) do
+    case AuthRequest.require_authenticated(conn, csrf: true) do
+      {:ok, conn, ctx} ->
+        case Chats.update(ctx.user, chat_id, conn.body_params) do
+          {:ok, chat} ->
+            json(conn, %{chat: chat})
+
+          {:error, :invalid_chat_update} ->
+            conn |> put_status(:unprocessable_entity) |> json(%{error: "invalid_chat_update"})
+
+          {:error, :not_found} ->
+            conn |> put_status(:not_found) |> json(%{error: "chat_not_found"})
+
+          {:error, :forbidden} ->
+            conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+
+          {:error, _} ->
+            conn
+            |> put_status(:service_unavailable)
+            |> json(%{error: "chat_update_outcome_unknown"})
         end
 
       {:error, conn} ->

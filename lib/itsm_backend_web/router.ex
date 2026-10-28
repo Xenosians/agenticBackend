@@ -37,6 +37,7 @@ defmodule ItsmBackendWeb.Router do
     # Before /v1/chats/:id, so "search" is never read as a chat id.
     get "/v1/chats/search", ChatController, :search
     get "/v1/chats/:id", ChatController, :show
+    patch "/v1/chats/:id", ChatController, :update
     get "/v1/chats/:id/history", ChatController, :history
     delete "/v1/chats/:id", ChatController, :delete
 

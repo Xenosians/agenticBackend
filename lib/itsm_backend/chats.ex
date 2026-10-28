@@ -16,15 +16,53 @@ defmodule ItsmBackend.Chats do
       "chat_id" => random_id(),
       "user_id" => user["user_id"],
       "title" => title,
+      "title_source" => if(title == "New chat", do: "default", else: "manual"),
+      "pinned" => false,
       "created_at" => now,
       "updated_at" => now,
       "archived_at" => nil
     }
 
-    SurrealStore.create(chat)
+    with {:ok, stored} <- SurrealStore.create(chat), do: public_chat(stored)
   end
 
-  def list(user), do: SurrealStore.list_for_user(user["user_id"])
+  def list(user) do
+    with {:ok, chats} <- SurrealStore.list_for_user(user["user_id"]) do
+      Enum.reduce_while(chats, {:ok, []}, fn chat, {:ok, acc} ->
+        case public_chat(chat) do
+          {:ok, row} -> {:cont, {:ok, [row | acc]}}
+          error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, rows} -> {:ok, Enum.reverse(rows)}
+        error -> error
+      end
+    end
+  end
+
+  @doc "Updates only the authenticated owner's active thread presentation settings."
+  def update(user, chat_id, attrs) do
+    with {:ok, changes} <- validate_changes(attrs),
+         {:ok, chat} <- get_authorized(user, chat_id),
+         true <- is_nil(chat["archived_at"]) || {:error, :not_found},
+         {:ok, stored} <- SurrealStore.update(chat["chat_id"], user["user_id"], changes, now()),
+         true <-
+           valid_update_receipt?(stored, chat, changes) || {:error, :chat_update_outcome_unknown},
+         {:ok, public} <- public_chat(stored) do
+      {:ok, public}
+    else
+      {:error, reason} when reason in [:invalid_chat_update, :not_found, :forbidden] ->
+        {:error, reason}
+
+      _ ->
+        {:error, :chat_update_outcome_unknown}
+    end
+  end
+
+  @doc "Derives an untitled thread's label from its first durably saved request."
+  def title_from_first_request(user_id, chat_id),
+    do: SurrealStore.title_from_first_request(chat_id, user_id)
 
   @search_query_max 200
   @search_result_limit 50
@@ -72,7 +110,7 @@ defmodule ItsmBackend.Chats do
 
   defp search_result(chat, needle, latest_turn) do
     title = chat["title"] || ""
-    base = Map.take(chat, ["chat_id", "title", "updated_at"])
+    base = Map.take(chat, ["chat_id", "title", "pinned", "updated_at"])
 
     cond do
       String.contains?(String.downcase(title), needle) ->
@@ -90,7 +128,7 @@ defmodule ItsmBackend.Chats do
     with {:ok, chat} <- SurrealStore.get(chat_id),
          true <- is_map(chat) || {:error, :not_found},
          true <- Authorization.owns_resource?(user, chat["user_id"]) || {:error, :forbidden} do
-      {:ok, chat}
+      public_chat(chat)
     else
       {:error, _} = error -> error
       _ -> {:error, :forbidden}
@@ -179,6 +217,49 @@ defmodule ItsmBackend.Chats do
   end
 
   defp normalize_title(_), do: "New chat"
+
+  defp validate_changes(attrs) when is_map(attrs) and map_size(attrs) > 0 do
+    valid? =
+      Enum.all?(attrs, fn
+        {"title", title} when is_binary(title) ->
+          String.trim(title) != "" and String.length(String.trim(title)) <= 160
+
+        {"pinned", pinned} when is_boolean(pinned) ->
+          true
+
+        _ ->
+          false
+      end)
+
+    if valid? do
+      {:ok,
+       Map.new(attrs, fn
+         {"title", title} -> {"title", String.trim(title)}
+         other -> other
+       end)}
+    else
+      {:error, :invalid_chat_update}
+    end
+  end
+
+  defp validate_changes(_), do: {:error, :invalid_chat_update}
+
+  defp valid_update_receipt?(stored, previous, changes) do
+    stored["chat_id"] == previous["chat_id"] and
+      stored["user_id"] == previous["user_id"] and is_nil(stored["archived_at"]) and
+      Enum.all?(changes, fn {key, value} -> stored[key] == value end)
+  end
+
+  # Old threads predate pinning. Only an absent field receives the compatible default.
+  defp public_chat(chat) when is_map(chat) do
+    case Map.fetch(chat, "pinned") do
+      :error -> {:ok, Map.put(chat, "pinned", false)}
+      {:ok, value} when is_boolean(value) -> {:ok, chat}
+      _ -> {:error, :invalid_chat_record}
+    end
+  end
+
+  defp public_chat(_), do: {:error, :invalid_chat_record}
 
   defp random_id, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:microsecond) |> DateTime.to_iso8601()

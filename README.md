@@ -8,7 +8,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 
 - Registration, email verification, login, password reset, session restoration, and session revocation.
 - Account controls: end other active sessions while keeping this one, and choose whether new completed tasks send automatic email. [API and notification scope](docs/account-controls.md).
-- User-owned chats, history, and durable AI jobs.
+- User-owned chats, history, and durable AI jobs. Chats support owner-scoped rename/pin, pinned-first lists and automatic titles from the first saved request. Explicit names are preserved; uncertain metadata writes return an error and require readback.
 - Optional reviewed workflow contracts bind requested operations and targets to the same durable submission, so incomplete plans can be rejected before tool dispatch.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
@@ -80,7 +80,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Surface | Routes |
 | --- | --- |
 | Identity and sessions | `/api/v1/auth/*` |
-| Chats | `/api/v1/chats`, `/api/v1/chats/search`, `/api/v1/chats/:id/history` |
+| Chats | `/api/v1/chats`, `/api/v1/chats/search`, `PATCH /api/v1/chats/:id` (title/pinned), `/api/v1/chats/:id/history` |
 | Job creation | `POST /api/v1/jobs` |
 | Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/chats/:id/history` |
 | Feedback on a task's result | `POST /api/v1/jobs/:id/feedback`, `GET /api/v1/feedback` |

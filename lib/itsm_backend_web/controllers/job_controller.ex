@@ -55,6 +55,13 @@ defmodule ItsmBackendWeb.JobController do
              job.workflow_contract,
              job.workflow_contract_hash
            ) do
+      # Presentation metadata is best effort after the durable submission. Its
+      # failure must never turn an accepted job into an apparent failed create.
+      case Chats.title_from_first_request(user["user_id"], chat["chat_id"]) do
+        :ok -> :ok
+        {:error, _} -> Logger.warning("chat automatic title could not be updated")
+      end
+
       conn
       |> put_status(:accepted)
       |> json(response)

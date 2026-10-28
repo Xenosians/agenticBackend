@@ -33,7 +33,7 @@ defmodule ItsmBackend.Chats.SurrealStore do
     statement = """
     SELECT * FROM chat
     WHERE user_id = $user_id AND archived_at = $archived_at
-    ORDER BY updated_at DESC;
+    ORDER BY pinned DESC, updated_at DESC;
     """
 
     with {:ok, results} <- Surreal.query(statement, %{"user_id" => user_id, "archived_at" => nil}),
@@ -81,6 +81,61 @@ defmodule ItsmBackend.Chats.SurrealStore do
     end
   end
 
+  def update(chat_id, user_id, changes, now) do
+    changes =
+      if Map.has_key?(changes, "title"),
+        do: Map.put(changes, "title_source", "manual"),
+        else: changes
+
+    statement = """
+    UPDATE ONLY type::record($table, $id)
+    MERGE $changes
+    WHERE user_id = $user_id AND archived_at = $archived_at
+    RETURN AFTER;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{
+             "table" => @table,
+             "id" => chat_id,
+             "user_id" => user_id,
+             "archived_at" => nil,
+             "changes" => Map.put(changes, "updated_at", Surreal.datetime(now))
+           }),
+         {:ok, record} <- exact_record(results) do
+      {:ok, record}
+    end
+  end
+
+  # The query selects the first saved request rather than the latest arriving
+  # callback. The compare-and-set cannot overwrite a concurrent manual rename.
+  def title_from_first_request(chat_id, user_id) do
+    statement = """
+    BEGIN TRANSACTION;
+    LET $first = (SELECT message, created_at FROM job
+      WHERE conversation_id = $id AND user_id = $user_id
+      ORDER BY created_at ASC LIMIT 1)[0];
+    IF type::is_string($first.message) {
+      UPDATE ONLY type::record($table, $id)
+      SET title = string::slice(string::trim(string::replace($first.message, /\\s+/, " ")), 0, 160),
+          title_source = "request"
+      WHERE user_id = $user_id AND archived_at = $archived_at
+        AND title = "New chat" AND (title_source = NONE OR title_source = "default");
+    };
+    COMMIT TRANSACTION;
+    """
+
+    case Surreal.query(statement, %{
+           "table" => @table,
+           "id" => chat_id,
+           "user_id" => user_id,
+           "archived_at" => nil
+         }) do
+      {:ok, _} -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
   def archive(chat_id, now) do
     statement = """
     UPDATE ONLY type::record($table, $id)
@@ -112,6 +167,14 @@ defmodule ItsmBackend.Chats.SurrealStore do
         record when is_map(record) -> {:ok, record}
         other -> {:error, {:unexpected_chat_result, other}}
       end
+    end
+  end
+
+  defp exact_record(results) do
+    case rows(results) do
+      {:ok, record} when is_map(record) -> {:ok, record}
+      {:ok, [record]} when is_map(record) -> {:ok, record}
+      _ -> {:error, :chat_update_outcome_unknown}
     end
   end
 
