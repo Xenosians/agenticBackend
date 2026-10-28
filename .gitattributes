@@ -1,0 +1,4 @@
+# Preserve POSIX startup scripts when checked out on Windows.
+/Dockerfile text eol=lf
+/.dockerignore text eol=lf
+/docker/*.sh text eol=lf
