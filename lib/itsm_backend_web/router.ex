@@ -31,6 +31,13 @@ defmodule ItsmBackendWeb.Router do
     delete "/v1/workflows/:id", WorkflowController, :delete
     post "/v1/workflows/:id/runs", WorkflowController, :run
     get "/v1/workflows/:id/runs", WorkflowController, :runs
+    get "/v1/topologies", TopologyController, :index
+    post "/v1/topologies", TopologyController, :create
+    get "/v1/topologies/:id", TopologyController, :show
+    put "/v1/topologies/:id", TopologyController, :update
+    delete "/v1/topologies/:id", TopologyController, :delete
+    post "/v1/topologies/:id/drift", TopologyController, :drift
+    post "/v1/engineering/netlist", EngineeringController, :netlist
     post "/v1/auth/logout", AuthController, :logout
     post "/v1/auth/forgot-password", AuthController, :forgot_password
     post "/v1/auth/reset-password", AuthController, :reset_password
