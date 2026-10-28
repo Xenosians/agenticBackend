@@ -9,6 +9,8 @@ RUN mix local.hex --force && mix local.rebar --force
 COPY mix.exs mix.lock ./
 COPY config ./config
 RUN mix deps.get --only prod && mix deps.compile
+# ItsmBackend.Contracts embeds these canonical schemas at compile time.
+COPY contracts ./contracts
 COPY lib ./lib
 COPY priv ./priv
 RUN mix compile --warnings-as-errors && mix release

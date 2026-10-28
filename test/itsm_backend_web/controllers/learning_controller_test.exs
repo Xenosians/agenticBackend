@@ -8,13 +8,34 @@ defmodule ItsmBackendWeb.LearningControllerTest do
   @preflight_path "/internal/v1/learning/preflight"
   @catalog %{
     "schema" => "learning-catalog.v1",
-    "methods" => [],
+    "methods" => [
+      %{
+        "id" => "sft",
+        "roles" => ["hub", "specialist"],
+        "tuning" => ["full", "lora", "qlora"],
+        "entrypoint" => "scripts/train_recipe.py",
+        "requires" => "Reviewed examples and validation"
+      },
+      %{
+        "id" => "dpo",
+        "roles" => ["specialist"],
+        "tuning" => ["qlora"],
+        "entrypoint" => "scripts/train_preferences.py",
+        "requires" => "Reviewed independent preferences"
+      },
+      %{
+        "id" => "ppo",
+        "roles" => ["hub"],
+        "tuning" => ["qlora"],
+        "entrypoint" => "scripts/train_ppo.py",
+        "requires" => "Evaluated adapter and simulator episodes"
+      }
+    ],
     "models" => [],
     "datasets" => [],
     "execution_enabled" => false,
     "promotion_enabled" => false
   }
-  @receipt %{"schema" => "learning-selection-preflight.v1", "status" => "blocked"}
   @selection %{
     "method" => "sft",
     "role" => "hub",
@@ -22,6 +43,38 @@ defmodule ItsmBackendWeb.LearningControllerTest do
     "model_id" => String.duplicate("a", 32),
     "dataset_id" => String.duplicate("b", 32),
     "dataset_sha256" => String.duplicate("c", 64)
+  }
+  @receipt %{
+    "schema" => "learning-selection-preflight.v1",
+    "status" => "blocked",
+    "preflight_sha256" => String.duplicate("d", 64),
+    "method" => "sft",
+    "role" => "hub",
+    "tuning" => "qlora",
+    "model" => %{
+      "id" => @selection["model_id"],
+      "backend" => "local",
+      "source_kind" => "local",
+      "state" => "ready"
+    },
+    "dataset" => %{
+      "id" => @selection["dataset_id"],
+      "sha256" => @selection["dataset_sha256"],
+      "lineage_id" => String.duplicate("e", 32),
+      "version" => 1,
+      "train_count" => 8,
+      "validation_count" => 2
+    },
+    "entrypoint" => "scripts/train_recipe.py",
+    "resource_state" => "unknown",
+    "blockers" =>
+      Enum.sort(
+        ~w(trusted_model_identity_required trusted_training_configuration_required fixed_evaluation_required resource_unknown host_dispatch_not_integrated separate_promotion_required)
+      ),
+    "execution_enabled" => false,
+    "model_loaded" => false,
+    "live_tool_execution" => false,
+    "promotion_enabled" => false
   }
 
   setup do
@@ -173,6 +226,130 @@ defmodule ItsmBackendWeb.LearningControllerTest do
       response = build_conn() |> bearer(identity) |> get("/api/v1/learning") |> json_response(503)
       assert response["error"] == "learning_service_unavailable"
       assert response["retryable"] == true
+    end
+  end
+
+  test "HTTP200 malformed or execution-enabling catalog maps are refused", %{
+    identity: identity,
+    responses: responses
+  } do
+    for body <- [
+          %{},
+          Map.put(@catalog, "schema", "wrong"),
+          Map.put(@catalog, "execution_enabled", true),
+          Map.put(@catalog, "methods", []),
+          Map.put(@catalog, "private_debug", "must not escape")
+        ] do
+      Agent.update(responses, &Map.put(&1, @catalog_path, {200, body}))
+      reply = build_conn() |> bearer(identity) |> get("/api/v1/learning") |> json_response(503)
+      assert reply["error"] == "learning_service_unavailable"
+      refute inspect(reply) =~ "must not escape"
+    end
+  end
+
+  test "preflight receipts must bind the exact selection and keep every execution gate disabled",
+       %{identity: identity, responses: responses} do
+    for body <- [
+          %{},
+          Map.put(@receipt, "status", "running"),
+          Map.put(@receipt, "model_loaded", true),
+          Map.put(@receipt, "promotion_enabled", true),
+          Map.put(@receipt, "blockers", []),
+          put_in(@receipt, ["model", "id"], String.duplicate("f", 32)),
+          put_in(@receipt, ["dataset", "sha256"], String.duplicate("f", 64)),
+          Map.put(@receipt, "method", "ppo")
+        ] do
+      Agent.update(responses, &Map.put(&1, @preflight_path, {200, body}))
+
+      reply =
+        build_conn()
+        |> bearer(identity)
+        |> post("/api/v1/learning/preflight", @selection)
+        |> json_response(503)
+
+      assert reply["error"] == "learning_service_unavailable"
+    end
+  end
+
+  test "valid local uploads and outbound inspection receipts preserve their method gates", %{
+    identity: identity,
+    responses: responses
+  } do
+    for {method, role, entrypoint, backend, source} <- [
+          {"sft", "specialist", "scripts/train_recipe.py", "uploaded", "local"},
+          {"sft", "hub", "scripts/train_recipe.py", "http", "outbound"},
+          {"dpo", "specialist", "scripts/train_preferences.py", "uploaded", "local"},
+          {"ppo", "hub", "scripts/train_ppo.py", "local", "local"}
+        ] do
+      selection = Map.merge(@selection, %{"method" => method, "role" => role})
+
+      method_blockers =
+        case method do
+          "dpo" ->
+            ["reviewed_preference_partitions_required"]
+
+          "ppo" ->
+            ["evaluated_adapter_checkpoint_required", "independent_simulator_episodes_required"]
+
+          _ ->
+            []
+        end
+
+      outbound_blockers =
+        if source == "outbound", do: ["outbound_connection_is_inference_only"], else: []
+
+      receipt =
+        @receipt
+        |> Map.merge(%{"method" => method, "role" => role, "entrypoint" => entrypoint})
+        |> put_in(["model", "backend"], backend)
+        |> put_in(["model", "source_kind"], source)
+        |> Map.put(
+          "blockers",
+          Enum.sort(@receipt["blockers"] ++ method_blockers ++ outbound_blockers)
+        )
+
+      Agent.update(responses, &Map.put(&1, @preflight_path, {200, receipt}))
+
+      assert build_conn()
+             |> bearer(identity)
+             |> post("/api/v1/learning/preflight", selection)
+             |> json_response(200) == receipt
+    end
+  end
+
+  test "catalog resource identities and dataset membership counts are validated", %{
+    identity: identity,
+    responses: responses
+  } do
+    model =
+      Map.merge(@receipt["model"], %{
+        "name" => "Owned upload",
+        "backend" => "uploaded",
+        "training_available" => false
+      })
+
+    dataset =
+      Map.merge(@receipt["dataset"], %{
+        "name" => "Reviewed data",
+        "state" => "ready",
+        "purpose" => "training",
+        "superseded_by" => nil
+      })
+
+    catalog = Map.merge(@catalog, %{"models" => [model], "datasets" => [dataset]})
+    Agent.update(responses, &Map.put(&1, @catalog_path, {200, catalog}))
+
+    assert build_conn() |> bearer(identity) |> get("/api/v1/learning") |> json_response(200) ==
+             catalog
+
+    for broken <- [
+          Map.put(catalog, "models", [Map.put(model, "source_kind", "outbound")]),
+          Map.put(catalog, "datasets", [Map.put(dataset, "validation_count", 0)]),
+          Map.put(catalog, "datasets", [Map.put(dataset, "sha256", "broken")]),
+          Map.put(catalog, "models", [model, model])
+        ] do
+      Agent.update(responses, &Map.put(&1, @catalog_path, {200, broken}))
+      assert build_conn() |> bearer(identity) |> get("/api/v1/learning") |> json_response(503)
     end
   end
 

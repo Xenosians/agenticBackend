@@ -88,6 +88,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | User extensions | `GET/POST /api/v1/extensions` |
 | Integration status | `GET /api/v1/integrations` |
 | Learning readiness (no training) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight` |
+| Saved workflows (each run is one durable job) | `GET/POST /api/v1/workflows`, `GET/PUT/DELETE /api/v1/workflows/:id`, `GET/POST /api/v1/workflows/:id/runs` |
 | Internal AI protocol | `/api/internal/v1/*` |
 
 The current v2 public job contract includes `pending`, `processing`, `waiting_approval`, `completed`, `failed`, `denied`, and `outcome_unknown`. Legacy v1 routes remain available. See the [v1 contract guide](contracts/v1/readme.md) and [v2 schemas](contracts/v2) before changing shared payloads. An optional [requested workflow contract](docs/requested-workflow.md) records explicitly reviewed steps; its server-computed digest remains bound to submission identity, history, queue dispatch and approvals.

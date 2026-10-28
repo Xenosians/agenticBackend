@@ -12,6 +12,8 @@ DEFINE TABLE IF NOT EXISTS job_metric TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS mail_outbox TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS provisioned_account TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS provisioned_mailbox TYPE ANY SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS workflow TYPE ANY SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS workflow_run TYPE ANY SCHEMALESS PERMISSIONS NONE;
 
 DEFINE INDEX IF NOT EXISTS auth_identity_user_id ON auth_identity FIELDS user_id UNIQUE;
 DEFINE INDEX IF NOT EXISTS auth_session_token_hash ON auth_session FIELDS token_hash UNIQUE;
@@ -24,3 +26,4 @@ DEFINE INDEX IF NOT EXISTS job_owner_created ON job FIELDS user_id, created_at;
 DEFINE INDEX IF NOT EXISTS job_metric_owner_attempt ON job_metric FIELDS user_id, job_id, attempt, recorded_at;
 DEFINE INDEX IF NOT EXISTS mail_outbox_status_next_attempt ON mail_outbox FIELDS status, next_attempt_at;
 DEFINE INDEX IF NOT EXISTS provisioned_mailbox_provider_email ON provisioned_mailbox FIELDS provider, email UNIQUE;
+DEFINE INDEX IF NOT EXISTS workflow_owner_updated ON workflow FIELDS user_id, updated_at;

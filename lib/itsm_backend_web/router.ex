@@ -24,6 +24,13 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/integrations", IntegrationController, :index
     get "/v1/learning", LearningController, :index
     post "/v1/learning/preflight", LearningController, :preflight
+    get "/v1/workflows", WorkflowController, :index
+    post "/v1/workflows", WorkflowController, :create
+    get "/v1/workflows/:id", WorkflowController, :show
+    put "/v1/workflows/:id", WorkflowController, :update
+    delete "/v1/workflows/:id", WorkflowController, :delete
+    post "/v1/workflows/:id/runs", WorkflowController, :run
+    get "/v1/workflows/:id/runs", WorkflowController, :runs
     post "/v1/auth/logout", AuthController, :logout
     post "/v1/auth/forgot-password", AuthController, :forgot_password
     post "/v1/auth/reset-password", AuthController, :reset_password

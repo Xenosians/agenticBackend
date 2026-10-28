@@ -11,6 +11,7 @@ defmodule ItsmBackendWeb.LearningController do
   use ItsmBackendWeb.RequestContract
 
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackend.Learning.PublicContract
   alias ItsmBackendWeb.{AuthRequest, PublicError}
 
   @selection_fields ~w(method role tuning model_id dataset_id dataset_sha256)
@@ -65,7 +66,11 @@ defmodule ItsmBackendWeb.LearningController do
            receive_timeout: 30_000
          ) do
       {:ok, %{status: 200, body: response}} when is_map(response) ->
-        json(conn, response)
+        if valid_receipt?(path, response, body) do
+          json(conn, response)
+        else
+          unavailable(conn)
+        end
 
       {:ok, %{status: 422, body: %{"detail" => code}}} when code in @public_refusals ->
         refused(conn, code)
@@ -74,14 +79,24 @@ defmodule ItsmBackendWeb.LearningController do
         refused(conn, "invalid_learning_request")
 
       _ ->
-        PublicError.render(
-          conn,
-          :service_unavailable,
-          "learning_service_unavailable",
-          "Learning could not be reached. Refresh to check again.",
-          retryable: true
-        )
+        unavailable(conn)
     end
+  end
+
+  defp valid_receipt?("/internal/v1/learning/catalog", response, _body),
+    do: PublicContract.valid_catalog?(response)
+
+  defp valid_receipt?("/internal/v1/learning/preflight", response, %{selection: selection}),
+    do: PublicContract.valid_preflight?(response, selection)
+
+  defp unavailable(conn) do
+    PublicError.render(
+      conn,
+      :service_unavailable,
+      "learning_service_unavailable",
+      "Learning could not be reached. Refresh to check again.",
+      retryable: true
+    )
   end
 
   defp refused(conn, code) do
