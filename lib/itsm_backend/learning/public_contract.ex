@@ -24,7 +24,8 @@ defmodule ItsmBackend.Learning.PublicContract do
     "ppo" => %{roles: ~w(hub), tuning: ~w(qlora), entrypoint: "scripts/train_ppo.py"}
   }
   @later_gates ~w(fixed_evaluation_required separate_promotion_required)
-  @run_states ~w(running completed failed interrupted cancelled)
+  @active_run_states ~w(starting running cancelling outcome_unknown)
+  @run_states @active_run_states ++ ~w(completed failed interrupted cancelled)
   @run_errors ~w(insufficient_gpu_memory chat_template_unsupported example_too_long cuda_unavailable dataset_admission_failed training_failed trainer_unavailable)
   @max_listed_runs 20
 
@@ -56,14 +57,17 @@ defmodule ItsmBackend.Learning.PublicContract do
   end
 
   def valid_runs?(data) do
-    exact?(data, ~w(schema runs)) and data["schema"] == "learning-runs.v1" and
+    exact?(data, ~w(schema runs)) and data["schema"] == "learning-runs.v2" and
       is_list(data["runs"]) and length(data["runs"]) <= @max_listed_runs and
       Enum.all?(data["runs"], &run?/1) and
-      length(data["runs"]) == MapSet.size(MapSet.new(data["runs"], & &1["run_id"]))
+      length(data["runs"]) == MapSet.size(MapSet.new(data["runs"], & &1["run_id"])) and
+      unique_submissions?(data["runs"])
   end
 
   def valid_started_run?(data, request) do
     run?(data) and
+      hex?(request["submission_id"], @id) and data["submission_id"] == request["submission_id"] and
+      data["request_sha256"] == request_digest(request) and
       Enum.all?(~w(method role tuning preflight_sha256), &(data[&1] == request[&1])) and
       data["model"]["id"] == request["model_id"] and
       data["dataset"]["id"] == request["dataset_id"] and
@@ -72,18 +76,54 @@ defmodule ItsmBackend.Learning.PublicContract do
 
   def valid_cancelled_run?(data, run_id), do: run?(data) and data["run_id"] == run_id
 
+  def valid_resolved_run?(data, submission),
+    do: run?(data) and hex?(submission, @id) and data["submission_id"] == submission
+
+  @doc "Digest of the exact ASCII selection/start identity shared with the AI."
+  def request_digest(request) do
+    request
+    |> Enum.sort()
+    |> Jason.OrderedObject.new()
+    |> Jason.encode!()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
   defp run?(row) do
     exact?(
       row,
-      ~w(schema run_id state method role tuning model dataset preflight_sha256 progress metrics candidate_sha256 error started_at finished_at serving_changed promotion_enabled)
+      ~w(schema run_id submission_id request_sha256 state method role tuning model dataset preflight_sha256 progress metrics candidate_sha256 error started_at finished_at serving_changed promotion_enabled)
     ) and
-      row["schema"] == "learning-run.v1" and hex?(row["run_id"], @id) and
+      row["schema"] == "learning-run.v2" and hex?(row["run_id"], @id) and
       row["state"] in @run_states and row["method"] == "sft" and
       row["role"] in ~w(hub specialist) and row["tuning"] in ~w(lora qlora) and
       disabled?(row, ~w(serving_changed promotion_enabled)) and
       hex?(row["preflight_sha256"], @digest) and run_model?(row["model"]) and
       run_dataset?(row["dataset"]) and progress?(row["progress"]) and metrics?(row["metrics"]) and
-      text?(row["started_at"], 40) and outcome?(row)
+      text?(row["started_at"], 40) and outcome?(row) and submission_binding?(row)
+  end
+
+  # Legacy records remain inspectable, but cannot confirm a newly submitted request.
+  defp submission_binding?(%{"submission_id" => nil, "request_sha256" => nil}), do: true
+
+  defp submission_binding?(row) do
+    hex?(row["submission_id"], @id) and hex?(row["request_sha256"], @digest) and
+      row["request_sha256"] ==
+        request_digest(%{
+          "submission_id" => row["submission_id"],
+          "method" => row["method"],
+          "role" => row["role"],
+          "tuning" => row["tuning"],
+          "model_id" => row["model"]["id"],
+          "dataset_id" => row["dataset"]["id"],
+          "dataset_sha256" => row["dataset"]["sha256"],
+          "preflight_sha256" => row["preflight_sha256"]
+        })
+  end
+
+  defp unique_submissions?(rows) do
+    identities = for row <- rows, not is_nil(row["submission_id"]), do: row["submission_id"]
+    length(identities) == MapSet.size(MapSet.new(identities))
   end
 
   # Only a completed run has a candidate; only a failed one has an error; only an active one is unfinished.
@@ -91,7 +131,11 @@ defmodule ItsmBackend.Learning.PublicContract do
     finished? = text?(row["finished_at"], 40)
 
     case row["state"] do
-      "running" ->
+      "outcome_unknown" ->
+        is_nil(row["finished_at"]) and is_nil(row["candidate_sha256"]) and
+          (is_nil(row["error"]) or row["error"] == "launch_outcome_unknown")
+
+      state when state in @active_run_states ->
         is_nil(row["finished_at"]) and is_nil(row["candidate_sha256"]) and is_nil(row["error"])
 
       "completed" ->

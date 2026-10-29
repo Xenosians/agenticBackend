@@ -25,6 +25,7 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/learning", LearningController, :index
     post "/v1/learning/preflight", LearningController, :preflight
     get "/v1/learning/runs", LearningController, :runs
+    get "/v1/learning/runs/resolve", LearningController, :resolve_run
     post "/v1/learning/runs", LearningController, :start_run
     post "/v1/learning/runs/:id/cancel", LearningController, :cancel_run
     get "/v1/workflows", WorkflowController, :index

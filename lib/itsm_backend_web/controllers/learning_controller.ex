@@ -17,7 +17,7 @@ defmodule ItsmBackendWeb.LearningController do
 
   @selection_fields ~w(method role tuning model_id dataset_id dataset_sha256)
   @selection_keys Enum.sort(@selection_fields)
-  @run_fields @selection_fields ++ ~w(preflight_sha256)
+  @run_fields @selection_fields ++ ~w(preflight_sha256 submission_id)
   @run_keys Enum.sort(@run_fields)
   @run_id ~r/\A[0-9a-f]{32}\z/
   # AI refusal codes that are safe and useful to show the owner.
@@ -35,6 +35,7 @@ defmodule ItsmBackendWeb.LearningController do
   request_contract(:index, [])
   request_contract(:preflight, required_body: @selection_fields)
   request_contract(:runs, [])
+  request_contract(:resolve_run, required_query: ["submission_id"])
   request_contract(:start_run, required_body: @run_fields)
   request_contract(:cancel_run, [])
 
@@ -92,6 +93,29 @@ defmodule ItsmBackendWeb.LearningController do
     end
   end
 
+  def resolve_run(conn, %{"submission_id" => submission} = params) do
+    with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn) do
+      if map_size(params) == 1 and is_binary(submission) and Regex.match?(@run_id, submission) do
+        forward(conn, "/internal/v1/learning/runs/resolve", %{
+          owner: ctx.user["user_id"],
+          submission_id: submission
+        })
+      else
+        refused(conn, "invalid_learning_request")
+      end
+    else
+      {:error, conn} -> conn
+    end
+  end
+
+  def resolve_run(conn, _params) do
+    with {:ok, conn, _ctx} <- AuthRequest.require_authenticated(conn) do
+      refused(conn, "invalid_learning_request")
+    else
+      {:error, conn} -> conn
+    end
+  end
+
   def cancel_run(conn, %{"id" => run_id} = params) do
     with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn, csrf: true) do
       if map_size(conn.query_params) == 0 and map_size(params) == 1 and
@@ -133,6 +157,24 @@ defmodule ItsmBackendWeb.LearningController do
           retryable: true
         )
 
+      {:ok, %{status: 409, body: %{"detail" => "learning_submission_conflict"}}} ->
+        PublicError.render(
+          conn,
+          :conflict,
+          "learning_submission_conflict",
+          "This run identity belongs to another request. Reconcile the original start before continuing."
+        )
+
+      {:ok, %{status: 503, body: %{"detail" => code}}}
+      when code in ~w(learning_run_outcome_unknown learning_registry_unavailable) ->
+        PublicError.render(
+          conn,
+          :service_unavailable,
+          code,
+          "The original run could not be reconciled. Keep its identity and check again before starting another run.",
+          retryable: true
+        )
+
       {:ok, %{status: 404, body: %{"detail" => "learning_run_unavailable"}}} ->
         PublicError.render(
           conn,
@@ -163,6 +205,9 @@ defmodule ItsmBackendWeb.LearningController do
 
   defp valid_receipt?("/internal/v1/learning/runs/start", response, %{run: request}),
     do: PublicContract.valid_started_run?(response, request)
+
+  defp valid_receipt?("/internal/v1/learning/runs/resolve", response, %{submission_id: submission}),
+       do: PublicContract.valid_resolved_run?(response, submission)
 
   defp valid_receipt?("/internal/v1/learning/runs/cancel", response, %{run_id: run_id}),
     do: PublicContract.valid_cancelled_run?(response, run_id)

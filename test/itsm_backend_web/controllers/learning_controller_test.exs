@@ -9,6 +9,7 @@ defmodule ItsmBackendWeb.LearningControllerTest do
   @runs_path "/internal/v1/learning/runs"
   @start_path "/internal/v1/learning/runs/start"
   @cancel_path "/internal/v1/learning/runs/cancel"
+  @resolve_path "/internal/v1/learning/runs/resolve"
   @catalog %{
     "schema" => "learning-catalog.v2",
     "methods" => [
@@ -74,10 +75,15 @@ defmodule ItsmBackendWeb.LearningControllerTest do
     "live_tool_execution" => false,
     "promotion_enabled" => false
   }
-  @run_request Map.put(@selection, "preflight_sha256", String.duplicate("d", 64))
+  @run_request Map.merge(@selection, %{
+                 "preflight_sha256" => String.duplicate("d", 64),
+                 "submission_id" => String.duplicate("8", 32)
+               })
   @run %{
-    "schema" => "learning-run.v1",
+    "schema" => "learning-run.v2",
     "run_id" => String.duplicate("f", 32),
+    "submission_id" => @run_request["submission_id"],
+    "request_sha256" => ItsmBackend.Learning.PublicContract.request_digest(@run_request),
     "state" => "running",
     "method" => "sft",
     "role" => "hub",
@@ -112,8 +118,9 @@ defmodule ItsmBackendWeb.LearningControllerTest do
            %{
              @catalog_path => {200, @catalog},
              @preflight_path => {200, @receipt},
-             @runs_path => {200, %{"schema" => "learning-runs.v1", "runs" => [@run]}},
+             @runs_path => {200, %{"schema" => "learning-runs.v2", "runs" => [@run]}},
              @start_path => {200, @run},
+             @resolve_path => {200, @run},
              @cancel_path =>
                {200,
                 Map.merge(@run, %{
@@ -413,7 +420,7 @@ defmodule ItsmBackendWeb.LearningControllerTest do
 
   test "runs are listed for the signed-in owner only", %{identity: identity} do
     assert build_conn() |> bearer(identity) |> get("/api/v1/learning/runs") |> json_response(200) ==
-             %{"schema" => "learning-runs.v1", "runs" => [@run]}
+             %{"schema" => "learning-runs.v2", "runs" => [@run]}
 
     owner = identity.user["user_id"]
 
@@ -442,7 +449,8 @@ defmodule ItsmBackendWeb.LearningControllerTest do
     for body <- [
           Map.put(@run_request, "owner", "another-user"),
           Map.put(@run_request, "max_steps", 4000),
-          Map.delete(@run_request, "preflight_sha256")
+          Map.delete(@run_request, "preflight_sha256"),
+          Map.delete(@run_request, "submission_id")
         ] do
       assert build_conn()
              |> bearer(identity)
@@ -476,6 +484,9 @@ defmodule ItsmBackendWeb.LearningControllerTest do
           Map.put(@run, "serving_changed", true),
           Map.put(@run, "promotion_enabled", true),
           Map.put(@run, "state", "promoted"),
+          Map.put(@run, "submission_id", String.duplicate("0", 32)),
+          Map.put(@run, "request_sha256", String.duplicate("0", 64)),
+          Map.merge(@run, %{"submission_id" => nil, "request_sha256" => nil}),
           Map.put(@run, "preflight_sha256", String.duplicate("0", 64)),
           put_in(@run, ["model", "id"], String.duplicate("0", 32)),
           put_in(@run, ["dataset", "sha256"], String.duplicate("0", 64)),
@@ -506,6 +517,8 @@ defmodule ItsmBackendWeb.LearningControllerTest do
         "finished_at" => "2026-10-29T07:10:00+00:00"
       })
 
+    completed = bind_submission(completed, String.duplicate("7", 32))
+
     for {list, ok?} <- [
           {[completed, @run], true},
           {[Map.put(completed, "candidate_sha256", nil)], false},
@@ -527,13 +540,19 @@ defmodule ItsmBackendWeb.LearningControllerTest do
            ], false},
           {[put_in(@run, ["model", "backend"], "http")], false},
           {[put_in(@run, ["model", "source_kind"], "outbound")], false},
-          {for(index <- 1..21, do: Map.put(@run, "run_id", run_id(index))), false},
-          {for(index <- 1..20, do: Map.put(@run, "run_id", run_id(index))), true},
+          {for(
+             index <- 1..21,
+             do: bind_submission(Map.put(@run, "run_id", run_id(index)), run_id(index))
+           ), false},
+          {for(
+             index <- 1..20,
+             do: bind_submission(Map.put(@run, "run_id", run_id(index)), run_id(index))
+           ), true},
           {[@run, @run], false}
         ] do
       Agent.update(
         responses,
-        &Map.put(&1, @runs_path, {200, %{"schema" => "learning-runs.v1", "runs" => list}})
+        &Map.put(&1, @runs_path, {200, %{"schema" => "learning-runs.v2", "runs" => list}})
       )
 
       status = if ok?, do: 200, else: 503
@@ -551,6 +570,9 @@ defmodule ItsmBackendWeb.LearningControllerTest do
   } do
     for {status, detail, public_status, code} <- [
           {409, "learning_host_busy", 409, "learning_host_busy"},
+          {409, "learning_submission_conflict", 409, "learning_submission_conflict"},
+          {503, "learning_run_outcome_unknown", 503, "learning_run_outcome_unknown"},
+          {503, "learning_registry_unavailable", 503, "learning_registry_unavailable"},
           {422, "learning_check_changed", 422, "learning_check_changed"},
           {422, "learning_run_not_ready", 422, "learning_run_not_ready"},
           {422, "raw private text", 422, "invalid_learning_request"}
@@ -610,6 +632,152 @@ defmodule ItsmBackendWeb.LearningControllerTest do
            |> json_response(404)
            |> Map.fetch!("error") ==
              "learning_run_unavailable"
+  end
+
+  test "read-only submission resolution is owner bound and never dispatches", %{
+    identity: identity,
+    responses: responses
+  } do
+    submission = @run_request["submission_id"]
+    path = "/api/v1/learning/runs/resolve?submission_id=#{submission}"
+    assert get(build_conn(), path) |> json_response(401)
+    assert get(cookie_conn(identity), path) |> json_response(200) == @run
+    owner = identity.user["user_id"]
+
+    assert_receive {:learning_request, @resolve_path,
+                    %{"owner" => ^owner, "submission_id" => ^submission} = body,
+                    ["learning-test-internal"]}
+
+    assert map_size(body) == 2
+    refute_received {:learning_request, @start_path, _, _}
+
+    for bad <- [
+          "/api/v1/learning/runs/resolve",
+          path <> "&owner=another",
+          "/api/v1/learning/runs/resolve?submission_id=bad"
+        ] do
+      assert build_conn() |> bearer(identity) |> get(bad) |> json_response(422)
+    end
+
+    refute_received {:learning_request, _, _, _}
+
+    Agent.update(
+      responses,
+      &Map.put(&1, @resolve_path, {200, bind_submission(@run, String.duplicate("7", 32))})
+    )
+
+    assert build_conn() |> bearer(identity) |> get(path) |> json_response(503)
+
+    Agent.update(
+      responses,
+      &Map.put(&1, @resolve_path, {404, %{"detail" => "learning_run_unavailable"}})
+    )
+
+    assert build_conn() |> bearer(identity) |> get(path) |> json_response(404)
+  end
+
+  test "active reconciliation states remain unfinished and legacy runs cannot confirm a start", %{
+    identity: identity,
+    responses: responses
+  } do
+    for state <- ~w(starting running cancelling outcome_unknown) do
+      run = Map.put(@run, "state", state)
+
+      Agent.update(
+        responses,
+        &Map.put(&1, @runs_path, {200, %{"schema" => "learning-runs.v2", "runs" => [run]}})
+      )
+
+      assert build_conn()
+             |> bearer(identity)
+             |> get("/api/v1/learning/runs")
+             |> json_response(200)
+
+      Agent.update(
+        responses,
+        &Map.put(&1, @start_path, {200, Map.put(run, "finished_at", "2026-10-29T07:10:00+00:00")})
+      )
+
+      assert build_conn()
+             |> bearer(identity)
+             |> post("/api/v1/learning/runs", @run_request)
+             |> json_response(503)
+    end
+
+    legacy = Map.merge(@run, %{"submission_id" => nil, "request_sha256" => nil})
+
+    Agent.update(
+      responses,
+      &Map.put(&1, @runs_path, {200, %{"schema" => "learning-runs.v2", "runs" => [legacy]}})
+    )
+
+    assert build_conn() |> bearer(identity) |> get("/api/v1/learning/runs") |> json_response(200)
+    Agent.update(responses, &Map.put(&1, @start_path, {200, legacy}))
+
+    assert build_conn()
+           |> bearer(identity)
+           |> post("/api/v1/learning/runs", @run_request)
+           |> json_response(503)
+  end
+
+  test "run request hashes use the same canonical wire encoding as the AI" do
+    assert ItsmBackend.Learning.PublicContract.request_digest(@run_request) ==
+             "43b731d3da2469989006693e5cf976f72386d809fa27aad82beb528837d45a8b"
+  end
+
+  test "an unknown launch is explicit and cancellation may remain in progress", %{
+    identity: identity,
+    responses: responses
+  } do
+    unknown =
+      Map.merge(@run, %{"state" => "outcome_unknown", "error" => "launch_outcome_unknown"})
+
+    Agent.update(responses, &Map.put(&1, @start_path, {200, unknown}))
+
+    assert build_conn()
+           |> bearer(identity)
+           |> post("/api/v1/learning/runs", @run_request)
+           |> json_response(200) == unknown
+
+    cancelling = Map.put(@run, "state", "cancelling")
+    Agent.update(responses, &Map.put(&1, @cancel_path, {200, cancelling}))
+
+    assert build_conn()
+           |> bearer(identity)
+           |> post("/api/v1/learning/runs/#{@run["run_id"]}/cancel", %{})
+           |> json_response(200) == cancelling
+
+    broken =
+      Map.merge(@run, %{
+        "state" => "failed",
+        "error" => "launch_outcome_unknown",
+        "finished_at" => "2026-10-29T07:10:00+00:00"
+      })
+
+    Agent.update(responses, &Map.put(&1, @start_path, {200, broken}))
+
+    assert build_conn()
+           |> bearer(identity)
+           |> post("/api/v1/learning/runs", @run_request)
+           |> json_response(503)
+  end
+
+  defp bind_submission(row, submission) do
+    request = %{
+      "submission_id" => submission,
+      "method" => row["method"],
+      "role" => row["role"],
+      "tuning" => row["tuning"],
+      "model_id" => row["model"]["id"],
+      "dataset_id" => row["dataset"]["id"],
+      "dataset_sha256" => row["dataset"]["sha256"],
+      "preflight_sha256" => row["preflight_sha256"]
+    }
+
+    Map.merge(row, %{
+      "submission_id" => submission,
+      "request_sha256" => ItsmBackend.Learning.PublicContract.request_digest(request)
+    })
   end
 
   defp bearer(conn, identity), do: AuthTestSupport.bearer_conn(conn, identity.auth.raw_token)
