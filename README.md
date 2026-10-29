@@ -86,9 +86,9 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/chats/:id/history` |
 | Feedback on a task's result | `POST /api/v1/jobs/:id/feedback`, `GET /api/v1/feedback` |
 | Feedback review (administrators) | `GET /api/v1/feedback/review[?status=all]`, `POST /api/v1/feedback/:id/review` |
-| User extensions | `GET/POST /api/v1/extensions` |
+| User extensions (models, datasets, Lua row transforms; the owner always comes from the session) | `GET/POST /api/v1/extensions` |
 | Integration status | `GET /api/v1/integrations` |
-| Learning readiness (no training) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight` |
+| Learning readiness and candidate SFT runs (never serving or promotion) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight`, `GET/POST /api/v1/learning/runs`, `POST /api/v1/learning/runs/:id/cancel` |
 | Saved workflows (each run is one durable job) | `GET/POST /api/v1/workflows`, `GET/PUT/DELETE /api/v1/workflows/:id`, `GET/POST /api/v1/workflows/:id/runs` |
 | Desired topologies and advisory drift (read-only) | `GET/POST /api/v1/topologies`, `GET/PUT/DELETE /api/v1/topologies/:id`, `POST /api/v1/topologies/:id/drift` |
 | PCB netlist inspection (no actuation) | `POST /api/v1/engineering/netlist` |

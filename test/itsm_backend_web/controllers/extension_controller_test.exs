@@ -58,4 +58,51 @@ defmodule ItsmBackendWeb.ExtensionControllerTest do
 
     refute_received {:extension_request, _, _}
   end
+
+  test "a Lua transform is forwarded for the session owner and its refusal stays curated", %{
+    identity: identity
+  } do
+    owner = identity.user["user_id"]
+    script = "return function(row) return row end"
+
+    assert build_conn()
+           |> put_req_cookie(RuntimeConfig.auth!().cookie_name, identity.auth.raw_token)
+           |> post("/api/v1/extensions", %{
+             action: "dataset_transform",
+             payload: %{script: script, text: "{}"}
+           })
+           |> json_response(403)
+
+    refute_received {:extension_request, _, _}
+
+    assert build_conn()
+           |> AuthTestSupport.bearer_conn(identity.auth.raw_token)
+           |> post("/api/v1/extensions", %{
+             action: "dataset_transform",
+             payload: %{script: script, text: "{}", owner: "another-user"}
+           })
+           |> json_response(200)
+
+    assert_receive {:extension_request,
+                    %{"owner" => ^owner, "action" => "dataset_transform", "payload" => payload},
+                    ["extension-test-internal"]}
+
+    assert payload["script"] == script
+
+    refusal =
+      build_conn()
+      |> AuthTestSupport.bearer_conn(identity.auth.raw_token)
+      |> post("/api/v1/extensions", %{
+        action: "dataset_transform",
+        payload: %{script: "refuse", text: "{}"}
+      })
+      |> json_response(422)
+
+    assert refusal["error"] == "extension_request_rejected"
+    assert refusal["detail"]["code"] == "transform_failed"
+    assert String.starts_with?(refusal["detail"]["message"], "Row 3: ")
+    assert String.length(refusal["detail"]["message"]) == 300
+    assert Map.keys(refusal["detail"]) |> Enum.sort() == ["code", "message"]
+    refute inspect(refusal) =~ "private worker detail"
+  end
 end
