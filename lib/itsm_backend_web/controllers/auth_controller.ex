@@ -110,7 +110,7 @@ defmodule ItsmBackendWeb.AuthController do
       conn
       |> put_status(:accepted)
       |> json(%{
-        status: "sent",
+        status: delivery,
         mail_delivery: delivery,
         resend_after_seconds: verification.resend_after_seconds,
         email_hint: verification.email_hint

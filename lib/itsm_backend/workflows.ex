@@ -176,6 +176,59 @@ defmodule ItsmBackend.Workflows do
     end
   end
 
+  @doc "Whether a run submission has claimed its chat and job binding; a read that never dispatches."
+  def run_claimed?(user, submission) when is_binary(submission) do
+    case SurrealStore.get_run(user["user_id"], submission) do
+      {:ok, nil} -> {:ok, false}
+      {:ok, binding} when is_map(binding) -> {:ok, true}
+      _ -> {:error, :run_outcome_unknown}
+    end
+  end
+
+  def run_claimed?(_user, _submission), do: {:error, :run_outcome_unknown}
+
+  @doc "Read the original accepted run without creating a chat or dispatching work."
+  def resolve_run(user, workflow_id, request) do
+    submission = request["submission_id"]
+
+    with {:ok, expected} <-
+           Job.new(%{
+             "user_id" => user["user_id"],
+             "message" => request["message"],
+             "submission_id" => submission
+           }),
+         {:ok, binding} when is_map(binding) <- SurrealStore.get_run(user["user_id"], submission),
+         :ok <-
+           validate_binding(
+             binding,
+             user["user_id"],
+             workflow_id,
+             request["version"],
+             submission,
+             request["message"],
+             expected.id
+           ),
+         {:ok, job} <- Jobs.get(expected.id),
+         true <- matching_job?(job, binding),
+         {:ok, receipt} <-
+           ItsmBackend.Jobs.PublicContract.build_create_response(
+             job.id,
+             job.status,
+             submission,
+             job.workflow_contract,
+             job.workflow_contract_hash
+           ) do
+      {:ok,
+       Map.merge(receipt, %{
+         "chat_id" => job.conversation_id,
+         "workflow_id" => workflow_id,
+         "workflow_version" => binding["workflow_version"]
+       })}
+    else
+      _ -> {:error, :intent_outcome_unknown}
+    end
+  end
+
   # Recover an admitted operation before consulting mutable workflow state.
   # Editing or archiving a workflow must not prevent reconciliation of its
   # original submission, nor relabel that submission as the current version.

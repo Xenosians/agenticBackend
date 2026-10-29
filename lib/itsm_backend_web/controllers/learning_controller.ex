@@ -81,10 +81,9 @@ defmodule ItsmBackendWeb.LearningController do
   def start_run(conn, params) do
     with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn, csrf: true) do
       if map_size(conn.query_params) == 0 and Enum.sort(Map.keys(params)) == @run_keys do
-        forward(conn, "/internal/v1/learning/runs/start", %{
-          owner: ctx.user["user_id"],
-          run: params
-        })
+        conn
+        |> register_before_send(&record_start_refusal(&1, ctx.user, params))
+        |> forward("/internal/v1/learning/runs/start", %{owner: ctx.user["user_id"], run: params})
       else
         refused(conn, "invalid_learning_request")
       end
@@ -230,4 +229,26 @@ defmodule ItsmBackendWeb.LearningController do
       "Learning refused this selection. Refresh your inputs and try again."
     )
   end
+
+  # Recorded before the refusal is sent (the response body is gone afterwards),
+  # so the owner's next read already sees the released request.
+  defp record_start_refusal(%{status: status} = conn, user, request) when status in [409, 422] do
+    case Jason.decode(conn.resp_body || "") do
+      {:ok, %{"error" => code}} when code in @public_refusals or code == "learning_host_busy" ->
+        ItsmBackend.SubmissionIntents.record_rejection(
+          user,
+          "learning",
+          "candidate",
+          request,
+          code
+        )
+
+      _ ->
+        :ok
+    end
+
+    conn
+  end
+
+  defp record_start_refusal(conn, _, _), do: conn
 end

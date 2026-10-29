@@ -20,6 +20,9 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/auth/verification", AuthController, :verification_status
     post "/v1/auth/login", AuthController, :login
     get "/v1/auth/me", AuthController, :me
+    get "/v1/submission-intents", SubmissionIntentController, :show
+    post "/v1/submission-intents", SubmissionIntentController, :reserve
+    post "/v1/submission-intents/acknowledge", SubmissionIntentController, :acknowledge
     get "/v1/extensions", ExtensionController, :index
     post "/v1/extensions", ExtensionController, :command
     get "/v1/integrations", IntegrationController, :index

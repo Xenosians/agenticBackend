@@ -22,6 +22,7 @@ defmodule ItsmBackendWeb.JobController do
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackend.Jobs.WorkflowContinuation
   alias ItsmBackend.RuntimeConfig
+  alias ItsmBackend.SubmissionIntents
   alias ItsmBackendWeb.AuthRequest
   alias ItsmBackendWeb.PublicError
 
@@ -36,6 +37,39 @@ defmodule ItsmBackendWeb.JobController do
   end
 
   defp create_authenticated(conn, user) do
+    conn
+    |> register_before_send(&record_refusal(&1, user))
+    |> create_job(user)
+  end
+
+  # Phoenix's own refusal of the exact server-held request releases its slot
+  # before the answer leaves, so the owner's next read sees it and can send a
+  # corrected request. Session, CSRF and transport failures never reach here
+  # and an unknown outcome keeps the original request pending.
+  defp record_refusal(%{status: status} = conn, user) when status in [403, 404, 409, 422] do
+    with %{"chat_id" => chat} = request when is_binary(chat) <- conn.body_params do
+      SubmissionIntents.record_rejection(
+        user,
+        "chat",
+        chat,
+        Map.take(request, ~w(chat_id message workflow_contract submission_id)),
+        refusal_code(conn)
+      )
+    end
+
+    conn
+  end
+
+  defp record_refusal(conn, _user), do: conn
+
+  defp refusal_code(conn) do
+    case Jason.decode(conn.resp_body || "") do
+      {:ok, %{"error" => code}} when is_binary(code) -> code
+      _ -> "rejected"
+    end
+  end
+
+  defp create_job(conn, user) do
     with {:ok, payload} <- PublicContract.validate_create_request(conn.body_params),
          {:ok, chat} <- Chats.get_authorized(user, payload["chat_id"]),
          {:ok, _chat} <- Chats.touch(chat["chat_id"]),

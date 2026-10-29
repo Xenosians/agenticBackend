@@ -9,7 +9,7 @@ defmodule ItsmBackendWeb.WorkflowController do
 
   require Logger
 
-  alias ItsmBackend.Workflows
+  alias ItsmBackend.{SubmissionIntents, Workflows}
   alias ItsmBackend.Jobs.PublicContract
   alias ItsmBackendWeb.{AuthRequest, PublicError}
 
@@ -74,7 +74,10 @@ defmodule ItsmBackendWeb.WorkflowController do
 
   def run(conn, %{"id" => id} = params) do
     with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn, csrf: true) do
-      case Workflows.run(ctx.user, id, Map.take(params, ~w(version submission_id message))) do
+      request = Map.take(params, ~w(version submission_id message))
+      conn = register_before_send(conn, &record_refusal(&1, ctx.user, id, request))
+
+      case Workflows.run(ctx.user, id, request) do
         {:ok, workflow, job, submission} ->
           case PublicContract.build_create_response(
                  job.id,
@@ -153,6 +156,22 @@ defmodule ItsmBackendWeb.WorkflowController do
   end
 
   defp respond(conn, {:error, reason}, _status), do: unavailable(conn, reason)
+
+  # A definitive refusal of the exact server-held run request releases its
+  # slot before the answer leaves; an unknown outcome keeps it pending.
+  defp record_refusal(%{status: status} = conn, user, id, request)
+       when status in [404, 409, 422] do
+    code =
+      case Jason.decode(conn.resp_body || "") do
+        {:ok, %{"error" => code}} when is_binary(code) -> code
+        _ -> "rejected"
+      end
+
+    SubmissionIntents.record_rejection(user, "workflow", id, request, code)
+    conn
+  end
+
+  defp record_refusal(conn, _user, _id, _request), do: conn
 
   defp unavailable(conn, reason) do
     Logger.error("workflow request failed: #{inspect(reason, limit: 5)}")
