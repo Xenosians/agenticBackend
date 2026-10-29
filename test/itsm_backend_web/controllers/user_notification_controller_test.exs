@@ -100,7 +100,7 @@ defmodule ItsmBackendWeb.UserNotificationControllerTest do
 
     pending_email = "pending-#{suffix()}@example.test"
 
-    {:ok, _user, _token} =
+    {:ok, _user, _token, _verification} =
       Auth.register(%{
         "email" => pending_email,
         "display_name" => "Pending user",

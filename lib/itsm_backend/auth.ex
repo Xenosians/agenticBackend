@@ -8,7 +8,7 @@ defmodule ItsmBackend.Auth do
   alias ItsmBackend.Auth.SurrealStore
   alias ItsmBackend.RuntimeConfig
 
-  @spec register(map()) :: {:ok, map(), String.t()} | {:error, term()}
+  @spec register(map()) :: {:ok, map(), String.t(), map()} | {:error, term()}
   def register(attrs) when is_map(attrs) do
     config = RuntimeConfig.auth!()
 
@@ -34,6 +34,9 @@ defmodule ItsmBackend.Auth do
         "role" => role,
         "status" => "pending_verification",
         "email_verified_at" => nil,
+        # The registration email is the first verification email.
+        "verification_sent_at" => now,
+        "verification_send_count" => 1,
         "created_at" => now,
         "updated_at" => now
       }
@@ -49,7 +52,8 @@ defmodule ItsmBackend.Auth do
 
       case SurrealStore.create_registration(user, identity, token) do
         :ok ->
-          {:ok, public_user(user), raw_token}
+          {:ok, verification} = verification_of(user)
+          {:ok, public_user(user), raw_token, verification}
 
         {:error, reason} ->
           case SurrealStore.find_user_by_email_key(email_key(email)) do
@@ -69,7 +73,11 @@ defmodule ItsmBackend.Auth do
 
   @spec login(String.t(), String.t(), String.t() | nil) ::
           {:ok, map()}
-          | {:error, :invalid_credentials | :email_not_verified | :account_disabled | term()}
+          | {:error,
+             :invalid_credentials
+             | {:email_not_verified, map()}
+             | :account_disabled
+             | term()}
   def login(email_input, password, user_agent)
       when is_binary(password) do
     with {:ok, email} <- normalize_email(email_input),
@@ -182,28 +190,135 @@ defmodule ItsmBackend.Auth do
 
   def verify_email(_), do: {:error, :invalid_token}
 
-  def issue_verification(email_input) do
+  @doc """
+  The pending verification of `user_id`: when the next email may be sent.
+
+  `{:ok, %{status: "pending", resend_after_seconds: n, email_hint: hint}}` while
+  the account waits for verification, `{:ok, %{status: "verified"}}` once it is
+  active, and `{:error, :not_pending}` when no account is waiting.
+  """
+  @spec verification_status(term()) :: {:ok, map()} | {:error, term()}
+  def verification_status(user_id) when is_binary(user_id) do
+    case SurrealStore.get_user(user_id) do
+      {:ok, %{"status" => "pending_verification"} = user} -> verification_of(user)
+      {:ok, %{"status" => "active"}} -> {:ok, %{status: "verified"}}
+      {:ok, _other} -> {:error, :not_pending}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def verification_status(_), do: {:error, :not_pending}
+
+  @doc """
+  Sends another verification email to the pending account `user_id` once the
+  wait since the previous email has passed. The wait doubles after each email,
+  up to the configured maximum.
+
+  The send is claimed in storage before a token is created, so two concurrent
+  requests cannot both send. `{:error, {:too_soon, seconds}}` reports the time
+  left; nothing is sent.
+  """
+  @spec resend_verification(term()) ::
+          {:ok, map(), String.t(), map()} | {:error, term()}
+  def resend_verification(user_id) when is_binary(user_id) do
     config = RuntimeConfig.auth!()
 
-    with {:ok, email} <- normalize_email(email_input),
-         {:ok, user} <- SurrealStore.find_user_by_email_key(email_key(email)),
-         true <- is_map(user) && user["status"] == "pending_verification" do
+    with {:ok, user} <- pending_user(user_id),
+         :ok <- resend_allowed(user),
+         {:ok, claimed} <- claim_send(user) do
       raw = random_token()
 
-      record =
-        token_record(
-          token_hash(raw),
-          user["user_id"],
-          "verify_email",
-          config.verification_ttl_seconds
-        )
+      token =
+        token_record(token_hash(raw), user_id, "verify_email", config.verification_ttl_seconds)
 
-      case SurrealStore.create_token(record) do
-        :ok -> {:ok, public_user(user), raw}
-        {:error, reason} -> {:error, reason}
+      with :ok <- SurrealStore.create_token(token) do
+        {:ok, verification} = verification_of(claimed)
+        {:ok, public_user(claimed), raw, verification}
       end
-    else
-      _ -> {:ok, :not_applicable}
+    end
+  end
+
+  def resend_verification(_), do: {:error, :not_pending}
+
+  # Only one request can claim a given send; a lost claim reports the new wait.
+  defp claim_send(user) do
+    case SurrealStore.claim_verification_send(
+           user["user_id"],
+           user["verification_send_count"] || 0,
+           now()
+         ) do
+      {:ok, claimed} when is_map(claimed) ->
+        {:ok, claimed}
+
+      {:ok, nil} ->
+        case verification_status(user["user_id"]) do
+          {:ok, %{status: "pending", resend_after_seconds: seconds}} when seconds > 0 ->
+            {:error, {:too_soon, seconds}}
+
+          {:ok, %{status: "pending"}} ->
+            {:error, :verification_send_conflict}
+
+          {:ok, %{status: "verified"}} ->
+            {:error, :not_pending}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp pending_user(user_id) do
+    case SurrealStore.get_user(user_id) do
+      {:ok, %{"status" => "pending_verification"} = user} -> {:ok, user}
+      {:ok, _other} -> {:error, :not_pending}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp resend_allowed(user) do
+    case verification_of(user) do
+      {:ok, %{resend_after_seconds: 0}} -> :ok
+      {:ok, %{resend_after_seconds: seconds}} -> {:error, {:too_soon, seconds}}
+    end
+  end
+
+  # Accounts created before the timed step have no send record and may resend now.
+  defp verification_of(user) do
+    {:ok,
+     %{
+       status: "pending",
+       resend_after_seconds: seconds_until_resend(user),
+       email_hint: email_hint(user["email"])
+     }}
+  end
+
+  defp seconds_until_resend(%{"verification_sent_at" => sent_at} = user)
+       when is_binary(sent_at) do
+    config = RuntimeConfig.auth!()
+    count = max(user["verification_send_count"] || 1, 1)
+
+    wait =
+      min(
+        config.verification_resend_seconds * Integer.pow(2, min(count - 1, 16)),
+        config.verification_resend_max_seconds
+      )
+
+    case DateTime.from_iso8601(sent_at) do
+      {:ok, sent, _} -> max(wait - DateTime.diff(DateTime.utc_now(), sent, :second), 0)
+      _ -> 0
+    end
+  end
+
+  defp seconds_until_resend(_user), do: 0
+
+  # Enough to recognise the address without repeating it in full.
+  defp email_hint(email) when is_binary(email) do
+    case String.split(email, "@", parts: 2) do
+      [local, domain] -> String.first(local) <> "•••@" <> domain
+      _ -> "•••"
     end
   end
 
@@ -283,7 +398,8 @@ defmodule ItsmBackend.Auth do
         {:error, :invalid_credentials}
 
       user["status"] == "pending_verification" ->
-        {:error, :email_not_verified}
+        {:ok, verification} = verification_of(user)
+        {:error, {:email_not_verified, Map.put(verification, :user_id, user["user_id"])}}
 
       user["status"] != "active" ->
         {:error, :account_disabled}

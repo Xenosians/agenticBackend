@@ -9,7 +9,7 @@ defmodule ItsmBackend.Auth.AuthSurrealTest do
     email = "auth-#{suffix}@example.test"
     password = "correct horse battery #{suffix}!"
 
-    assert {:ok, user, verification_token} =
+    assert {:ok, user, verification_token, _verification} =
              Auth.register(%{
                "email" => email,
                "display_name" => "Auth Test #{suffix}",

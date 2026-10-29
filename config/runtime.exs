@@ -361,6 +361,9 @@ end
 auth_registration_enabled = System.get_env("AUTH_REGISTRATION_ENABLED") || "true"
 auth_session_ttl = System.get_env("AUTH_SESSION_TTL_SECONDS") || "604800"
 auth_verification_ttl = System.get_env("AUTH_VERIFICATION_TTL_SECONDS") || "86400"
+# Wait before another verification email; it doubles after each one, up to the maximum.
+auth_verification_resend = System.get_env("AUTH_VERIFICATION_RESEND_SECONDS") || "60"
+auth_verification_resend_max = System.get_env("AUTH_VERIFICATION_RESEND_MAX_SECONDS") || "900"
 auth_password_reset_ttl = System.get_env("AUTH_PASSWORD_RESET_TTL_SECONDS") || "3600"
 auth_cookie_name = System.get_env("AUTH_COOKIE_NAME") || "itsm_session"
 auth_cookie_same_site = System.get_env("AUTH_COOKIE_SAME_SITE") || "Lax"
@@ -395,6 +398,8 @@ config :itsm_backend,
        registration_enabled: auth_registration_enabled,
        session_ttl_seconds: auth_session_ttl,
        verification_ttl_seconds: auth_verification_ttl,
+       verification_resend_seconds: auth_verification_resend,
+       verification_resend_max_seconds: auth_verification_resend_max,
        password_reset_ttl_seconds: auth_password_reset_ttl,
        cookie_name: auth_cookie_name,
        cookie_secure: auth_cookie_secure,

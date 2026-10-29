@@ -18,7 +18,7 @@ defmodule ItsmBackendWeb.AuthTestSupport do
     password =
       "correct horse battery #{suffix}!"
 
-    {:ok, _pending_user, verification_token} =
+    {:ok, _pending_user, verification_token, _verification} =
       Auth.register(%{
         "email" => email,
         "display_name" => "Test User #{suffix}",

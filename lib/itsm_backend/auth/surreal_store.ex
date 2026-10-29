@@ -23,7 +23,11 @@ defmodule ItsmBackend.Auth.SurrealStore do
       "identity" => Surreal.datetime_fields(identity, ~w(created_at)),
       "user_table" => @user_table,
       "user_id" => user["user_id"],
-      "user" => Surreal.datetime_fields(user, ~w(created_at updated_at email_verified_at)),
+      "user" =>
+        Surreal.datetime_fields(
+          user,
+          ~w(created_at updated_at email_verified_at verification_sent_at)
+        ),
       "token_table" => @token_table,
       "token_id" => token["token_id"],
       "token_record" => Surreal.datetime_fields(token, ~w(created_at expires_at consumed_at))
@@ -259,6 +263,36 @@ defmodule ItsmBackend.Auth.SurrealStore do
   end
 
   defp same_time?(_, _), do: false
+
+  @doc """
+  Records one more verification email for a pending account, only if no other
+  send was recorded since `previous_count` was read. `{:ok, nil}` means another
+  request claimed it first or the account is no longer pending.
+  """
+  def claim_verification_send(user_id, previous_count, now)
+      when is_binary(user_id) and is_integer(previous_count) do
+    statement = """
+    UPDATE ONLY type::record($table, $user_id)
+    SET verification_sent_at = $now,
+        verification_send_count = $next_count,
+        updated_at = $now
+    WHERE status = "pending_verification"
+      AND (verification_send_count ?? 0) = $previous_count
+    RETURN AFTER;
+    """
+
+    with {:ok, results} <-
+           Surreal.query(statement, %{
+             "table" => @user_table,
+             "user_id" => user_id,
+             "now" => Surreal.datetime(now),
+             "previous_count" => previous_count,
+             "next_count" => previous_count + 1
+           }),
+         {:ok, record} <- single_or_nil(results) do
+      {:ok, record}
+    end
+  end
 
   def create_token(token) do
     statement = """

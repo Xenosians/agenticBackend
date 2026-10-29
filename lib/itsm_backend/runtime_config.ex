@@ -442,10 +442,25 @@ defmodule ItsmBackend.RuntimeConfig do
       raise Error, message: "SameSite=None requires a secure authentication cookie"
     end
 
+    verification_resend_seconds =
+      fetch_positive_integer!(config, :verification_resend_seconds, :auth)
+
+    verification_resend_max_seconds =
+      fetch_positive_integer!(config, :verification_resend_max_seconds, :auth)
+
+    if verification_resend_max_seconds < verification_resend_seconds do
+      raise Error,
+        message:
+          "expected :itsm_backend.auth.verification_resend_max_seconds to be at least " <>
+            "verification_resend_seconds"
+    end
+
     %{
       registration_enabled: fetch_boolean!(config, :registration_enabled, :auth),
       session_ttl_seconds: fetch_positive_integer!(config, :session_ttl_seconds, :auth),
       verification_ttl_seconds: fetch_positive_integer!(config, :verification_ttl_seconds, :auth),
+      verification_resend_seconds: verification_resend_seconds,
+      verification_resend_max_seconds: verification_resend_max_seconds,
       password_reset_ttl_seconds:
         fetch_positive_integer!(config, :password_reset_ttl_seconds, :auth),
       cookie_name: fetch_non_empty_string!(config, :cookie_name, :auth),

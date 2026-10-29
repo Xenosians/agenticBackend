@@ -17,6 +17,7 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/auth/register", AuthController, :register
     post "/v1/auth/verify-email", AuthController, :verify_email
     post "/v1/auth/resend-verification", AuthController, :resend_verification
+    get "/v1/auth/verification", AuthController, :verification_status
     post "/v1/auth/login", AuthController, :login
     get "/v1/auth/me", AuthController, :me
     get "/v1/extensions", ExtensionController, :index
