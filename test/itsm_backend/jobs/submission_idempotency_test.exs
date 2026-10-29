@@ -112,4 +112,18 @@ defmodule ItsmBackend.Jobs.SubmissionIdempotencyTest do
     assert {:ok, [only_job]} = Jobs.list_by_conversation(attrs.user_id, attrs.conversation_id)
     assert only_job.id == recovered.id
   end
+
+  test "a chat's job list shows each job once even when storage repeats a row" do
+    attrs = request()
+    assert {:ok, first} = Jobs.create(attrs)
+
+    assert {:ok, second} =
+             Jobs.create(%{attrs | submission_id: ItsmBackend.SubmissionTestSupport.identity()})
+
+    restore = StorageFaultProxy.install!(:duplicate_rows, ~r/FROM job\s+WHERE user_id/)
+    assert {:ok, jobs} = Jobs.list_by_conversation(attrs.user_id, attrs.conversation_id)
+    assert_receive {:storage_fault, :duplicate_rows}
+    restore.()
+    assert Enum.map(jobs, & &1.id) == [first.id, second.id]
+  end
 end

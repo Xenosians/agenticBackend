@@ -568,7 +568,10 @@ defmodule ItsmBackend.Jobs.SurrealStore do
          {:ok, result} <- extract_result(response) do
       rows = if is_list(result), do: result, else: []
 
+      # One row per job: a read racing concurrent conflicting writes has been
+      # seen returning the same record twice, so keep the first of each id.
       rows
+      |> Enum.uniq_by(&Map.get(&1, "id"))
       |> Enum.reduce_while({:ok, []}, fn row, {:ok, acc} ->
         case deserialize(row) do
           {:ok, job} -> {:cont, {:ok, [job | acc]}}

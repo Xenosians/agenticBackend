@@ -10,6 +10,8 @@ defmodule ItsmBackendWeb.StorageFaultProxy do
     * `:rpc_error` - answer with a JSON-RPC error without running the statement
     * `:empty_result` - answer as if nothing matched, without running the statement
     * `:lost_response` - run the statement, then lose the answer (HTTP 502)
+    * `:duplicate_rows` - run the statement, then return every row twice (an index
+      read during concurrent conflicting writes was once seen doing this)
 
   The test process receives `{:storage_fault, fault}` for every injected fault.
   """
@@ -20,7 +22,7 @@ defmodule ItsmBackendWeb.StorageFaultProxy do
 
   @doc "Routes storage through the proxy. Returns a function that restores direct access."
   def install!(fault, %Regex{} = fail_when)
-      when fault in [:http_500, :rpc_error, :empty_result, :lost_response] do
+      when fault in [:http_500, :rpc_error, :empty_result, :lost_response, :duplicate_rows] do
     original = Application.fetch_env!(:itsm_backend, :surrealdb)
 
     options = %{
@@ -88,6 +90,24 @@ defmodule ItsmBackendWeb.StorageFaultProxy do
   defp inject(conn, body, _id, %{fault: :lost_response, upstream: upstream}) do
     _ = forward(conn, body, upstream)
     send_resp(conn, 502, "the statement ran but its answer was lost")
+  end
+
+  defp inject(conn, body, _id, %{fault: :duplicate_rows, upstream: upstream}) do
+    with {:ok, %{status: 200, body: raw}} <- forward(conn, body, upstream),
+         {:ok, %{"result" => statements} = reply} when is_list(statements) <- Jason.decode(raw) do
+      doubled =
+        Enum.map(statements, fn
+          %{"result" => rows} = statement when is_list(rows) ->
+            %{statement | "result" => Enum.flat_map(rows, &[&1, &1])}
+
+          statement ->
+            statement
+        end)
+
+      json(conn, %{reply | "result" => doubled})
+    else
+      _ -> send_resp(conn, 502, "storage upstream unavailable")
+    end
   end
 
   defp relay(conn, body, upstream) do
