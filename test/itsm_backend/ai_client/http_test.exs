@@ -251,6 +251,33 @@ defmodule ItsmBackend.AIClient.HTTPTest do
     assert {:error, {:ai_service_error, 503, _}} = HTTP.reject("approval-123")
   end
 
+  # Health probes answer the caller's own liveness check: one bounded attempt each.
+  # An unreachable or unavailable AI service is reported at once, never retried.
+  for {probe, path} <- [health: "/health", ready: "/ready", integrations: "/v1/integrations"] do
+    test "#{probe} reports a refused connection after one attempt" do
+      Req.Test.expect(__MODULE__, 1, &Req.Test.transport_error(&1, :econnrefused))
+
+      assert {:error, {:request_failed, %Req.TransportError{reason: :econnrefused}}} =
+               apply(HTTP, unquote(probe), [])
+    end
+
+    test "#{probe} reports an unavailable service after one attempt" do
+      Req.Test.expect(__MODULE__, 1, fn conn ->
+        assert conn.request_path == unquote(path)
+        json_response(conn, 503, %{"status" => "starting"})
+      end)
+
+      assert {:error, {:ai_service_error, 503, _}} = apply(HTTP, unquote(probe), [])
+    end
+  end
+
+  test "a synchronous run that fails to connect is not resubmitted" do
+    Req.Test.expect(__MODULE__, 1, &Req.Test.transport_error(&1, :econnrefused))
+
+    assert {:error, {:request_failed, %Req.TransportError{reason: :econnrefused}}} =
+             HTTP.run("jdoe", "Check account.")
+  end
+
   defp json_response(
          conn,
          status,

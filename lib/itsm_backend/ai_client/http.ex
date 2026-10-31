@@ -188,6 +188,12 @@ defmodule ItsmBackend.AIClient.HTTP do
 
   # ------------------------------------------------------------
   # Integration status
+  #
+  # Status probes (integrations, health, readiness) make one bounded
+  # attempt. They answer a caller's own liveness or status check, so an
+  # unreachable or starting AI service is reported at once as degraded
+  # state; retrying inside the probe only stretches its latency past
+  # the caller's timeout.
   # ------------------------------------------------------------
 
   @impl true
@@ -196,7 +202,8 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.get(
            "#{config.base_url}/v1/integrations",
-           receive_timeout: config.health_timeout_ms
+           receive_timeout: config.health_timeout_ms,
+           retry: false
          ) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
@@ -220,7 +227,8 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.get(
            "#{config.base_url}/health",
-           receive_timeout: config.health_timeout_ms
+           receive_timeout: config.health_timeout_ms,
+           retry: false
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
@@ -254,7 +262,8 @@ defmodule ItsmBackend.AIClient.HTTP do
 
     case Req.get(
            "#{config.base_url}/ready",
-           receive_timeout: config.ready_timeout_ms
+           receive_timeout: config.ready_timeout_ms,
+           retry: false
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
