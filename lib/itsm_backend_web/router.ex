@@ -3,6 +3,16 @@ defmodule ItsmBackendWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug ItsmBackendWeb.ClientAddress
+    plug :api_response_headers
+  end
+
+  # JSON from this API is private to the signed-in browser: never cached, never
+  # content-sniffed and never framed.
+  defp api_response_headers(conn, _opts) do
+    conn
+    |> put_secure_browser_headers(%{"x-frame-options" => "DENY"})
+    |> put_resp_header("cache-control", "no-store")
   end
 
   scope "/api",

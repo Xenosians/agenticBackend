@@ -92,6 +92,19 @@ defmodule ItsmBackend.Auth do
 
   def login(_, _, _), do: {:error, :invalid_credentials}
 
+  @doc """
+  The key that counts sign-in attempts for an email address: the same hashed key
+  the account is stored under, derived identically whether or not an account
+  exists, so counting never reveals one.
+  """
+  @spec sign_in_key(term()) :: String.t()
+  def sign_in_key(email_input) do
+    case normalize_email(email_input) do
+      {:ok, email} -> email_key(email)
+      {:error, _} -> email_key("invalid")
+    end
+  end
+
   def authenticate_session(raw_token) when is_binary(raw_token) do
     now = now()
 

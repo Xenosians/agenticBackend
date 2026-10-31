@@ -476,6 +476,66 @@ defmodule ItsmBackend.RuntimeConfig do
   end
 
   # ------------------------------------------------------------
+  # Trusted reverse proxies
+  # ------------------------------------------------------------
+
+  @doc """
+  Reverse proxies whose `X-Forwarded-For` names the client, as `{network, prefix_bits}`.
+  Configured as CIDR text (`TRUSTED_PROXIES`); an invalid range is a configuration error.
+  """
+  @spec trusted_proxies!() :: [{:inet.ip_address(), non_neg_integer()}]
+  def trusted_proxies! do
+    case Application.get_env(:itsm_backend, :trusted_proxies, []) do
+      ranges when is_list(ranges) ->
+        Enum.map(ranges, &parse_cidr!/1)
+
+      value ->
+        raise Error,
+          message: "expected :itsm_backend.trusted_proxies to be a list, got: #{inspect(value)}"
+    end
+  end
+
+  defp parse_cidr!(range) when is_binary(range) do
+    with [text, bits_text] <- String.split(String.trim(range), "/", parts: 2),
+         {:ok, network} <- :inet.parse_strict_address(String.to_charlist(text)),
+         {bits, ""} <- Integer.parse(bits_text),
+         true <- bits >= 0 and bits <= if(tuple_size(network) == 4, do: 32, else: 128) do
+      {network, bits}
+    else
+      _ ->
+        raise Error,
+          message: "invalid trusted proxy range #{inspect(range)}; use CIDR such as 172.16.0.0/12"
+    end
+  end
+
+  defp parse_cidr!(range),
+    do:
+      raise(Error,
+        message: "invalid trusted proxy range #{inspect(range)}; use CIDR such as 172.16.0.0/12"
+      )
+
+  # ------------------------------------------------------------
+  # Sign-in guessing limits
+  # ------------------------------------------------------------
+
+  @spec sign_in_guard!() :: %{
+          account_failures: pos_integer(),
+          address_failures: pos_integer(),
+          reset_requests: pos_integer(),
+          window_seconds: pos_integer()
+        }
+  def sign_in_guard! do
+    config = fetch_keyword_config!(:sign_in_guard)
+
+    %{
+      account_failures: fetch_positive_integer!(config, :account_failures, :sign_in_guard),
+      address_failures: fetch_positive_integer!(config, :address_failures, :sign_in_guard),
+      reset_requests: fetch_positive_integer!(config, :reset_requests, :sign_in_guard),
+      window_seconds: fetch_positive_integer!(config, :window_seconds, :sign_in_guard)
+    }
+  end
+
+  # ------------------------------------------------------------
   # CORS validation
   # ------------------------------------------------------------
 

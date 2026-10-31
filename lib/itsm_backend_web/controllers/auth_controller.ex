@@ -35,6 +35,7 @@ defmodule ItsmBackendWeb.AuthController do
 
   alias ItsmBackend.Auth
   alias ItsmBackend.Auth.AccountsMailer
+  alias ItsmBackend.Auth.SignInGuard
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
   alias ItsmBackendWeb.PublicError
@@ -131,10 +132,22 @@ defmodule ItsmBackendWeb.AuthController do
   end
 
   def login(conn, %{"email" => email, "password" => password}) do
+    key = Auth.sign_in_key(email)
+
+    case SignInGuard.reserve_sign_in(key, conn.remote_ip) do
+      :ok -> attempt_login(conn, key, email, password)
+      {:error, {:rate_limited, seconds}} -> sign_in_rate_limited(conn, seconds)
+    end
+  end
+
+  def login(conn, _), do: error(conn, :unprocessable_entity, "invalid_request")
+
+  defp attempt_login(conn, key, email, password) do
     user_agent = get_req_header(conn, "user-agent") |> List.first()
 
     case Auth.login(email, password, user_agent) do
       {:ok, auth} ->
+        SignInGuard.record_success(key)
         config = RuntimeConfig.auth!()
         session = auth.session
 
@@ -151,6 +164,8 @@ defmodule ItsmBackendWeb.AuthController do
       # Only the right password reaches this branch, so the timed step resumes
       # for the account's owner without revealing whether other addresses exist.
       {:error, {:email_not_verified, verification}} ->
+        SignInGuard.record_success(key)
+
         conn
         |> put_verification_cookie(verification.user_id)
         |> put_status(:forbidden)
@@ -161,14 +176,29 @@ defmodule ItsmBackendWeb.AuthController do
         })
 
       {:error, :account_disabled} ->
+        SignInGuard.record_success(key)
         error(conn, :forbidden, "account_disabled")
 
+      {:error, :invalid_credentials} ->
+        SignInGuard.record_failure(key, conn.remote_ip)
+        error(conn, :unauthorized, "invalid_credentials")
+
+      # Storage was unreachable: no password was judged, so nothing is counted.
       {:error, _} ->
         error(conn, :unauthorized, "invalid_credentials")
     end
   end
 
-  def login(conn, _), do: error(conn, :unprocessable_entity, "invalid_request")
+  defp sign_in_rate_limited(conn, seconds) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(seconds))
+    |> put_status(:too_many_requests)
+    |> json(%{
+      error: "sign_in_rate_limited",
+      message: "Too many sign-in attempts. Wait before trying again.",
+      retry_after_seconds: seconds
+    })
+  end
 
   def me(conn, _params) do
     case AuthRequest.require_authenticated(conn) do
@@ -219,18 +249,15 @@ defmodule ItsmBackendWeb.AuthController do
     end
   end
 
+  # The answer never says whether the address has an account. Past the client's
+  # limit the answer stays the same, but nothing is looked up or sent.
   def forgot_password(conn, %{"email" => email}) do
-    case Auth.issue_password_reset(email) do
-      {:ok, user, token} ->
-        _ = AccountsMailer.deliver_password_reset(user, token)
-        accepted(conn)
-
-      {:ok, :not_applicable} ->
-        accepted(conn)
-
-      {:error, _} ->
-        accepted(conn)
+    with :ok <- SignInGuard.reserve_reset_request(conn.remote_ip),
+         {:ok, user, token} <- Auth.issue_password_reset(email) do
+      _ = AccountsMailer.deliver_password_reset(user, token)
     end
+
+    accepted(conn)
   end
 
   def forgot_password(conn, _), do: accepted(conn)

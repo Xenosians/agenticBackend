@@ -411,6 +411,24 @@ config :itsm_backend,
        ai_context_enabled: System.get_env("AI_JOB_CONTEXT_ENABLED") || "false",
        ai_context_max_turns: System.get_env("AI_JOB_CONTEXT_MAX_TURNS") || "12"
 
+# Online guessing limits: failed sign-ins per account and per client address, and
+# password-reset requests per client address, within one rolling window.
+config :itsm_backend,
+       :sign_in_guard,
+       account_failures: System.get_env("AUTH_SIGN_IN_ACCOUNT_FAILURES") || "5",
+       address_failures: System.get_env("AUTH_SIGN_IN_ADDRESS_FAILURES") || "20",
+       reset_requests: System.get_env("AUTH_PASSWORD_RESET_REQUESTS") || "5",
+       window_seconds: System.get_env("AUTH_SIGN_IN_WINDOW_SECONDS") || "900"
+
+# Reverse proxies (CIDR, comma separated) whose X-Forwarded-For names the client.
+# Empty means the immediate peer is the client.
+config :itsm_backend,
+       :trusted_proxies,
+       (System.get_env("TRUSTED_PROXIES") || "")
+       |> String.split(",", trim: true)
+       |> Enum.map(&String.trim/1)
+       |> Enum.reject(&(&1 == ""))
+
 # ------------------------------------------------------------
 # Outbound mail transport
 #

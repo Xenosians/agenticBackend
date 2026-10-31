@@ -20,7 +20,8 @@ defmodule ItsmBackend.Application do
         {
           Phoenix.PubSub,
           name: ItsmBackend.PubSub
-        }
+        },
+        ItsmBackend.Auth.SignInGuard
       ] ++
         queue_worker_children() ++
         mail_outbox_worker_children() ++
