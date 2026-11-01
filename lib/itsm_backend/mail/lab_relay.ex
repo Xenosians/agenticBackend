@@ -8,6 +8,8 @@ defmodule ItsmBackend.Mail.LabRelay do
   configured lab domain are routed here; every other recipient keeps the
   configured provider. Delivery authenticates as the configured sender
   account on the lab server, which accepts mail only for its own domain.
+  The lab server takes that password without TLS, so the relay is used only
+  when the server is on this machine (a loopback address or `localhost`).
   """
 
   import Swoosh.Email
@@ -63,19 +65,33 @@ defmodule ItsmBackend.Mail.LabRelay do
          sender when is_binary(sender) and sender != "" <- Keyword.get(config, :sender),
          password when is_binary(password) and password != "" <- Keyword.get(config, :password),
          {:ok, domain} <- lab_domain(),
-         true <- lab_address?(sender, domain) do
+         true <- lab_address?(sender, domain),
+         host = Keyword.get(config, :host, "127.0.0.1"),
+         true <- loopback?(host) do
       {:ok,
        %{
          domain: domain,
          sender: sender,
          password: password,
-         host: Keyword.get(config, :host, "127.0.0.1"),
+         host: host,
          port: Keyword.get(config, :port, 1587)
        }}
     else
       _ -> :disabled
     end
   end
+
+  defp loopback?("localhost"), do: true
+
+  defp loopback?(host) when is_binary(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, {127, _, _, _}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+      _ -> false
+    end
+  end
+
+  defp loopback?(_host), do: false
 
   defp lab_domain do
     {:ok, RuntimeConfig.mailbox_lab_domain!()}

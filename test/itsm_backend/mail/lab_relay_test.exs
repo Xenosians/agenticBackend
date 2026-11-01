@@ -66,4 +66,39 @@ defmodule ItsmBackend.Mail.LabRelayTest do
   test "an unreachable lab server is an error, never a silent success" do
     assert {:error, _reason} = LabRelay.deliver("alice@itsm.test", "Subject", "Body", nil, "ITSM")
   end
+
+  test "the plain-text lab password never leaves this machine" do
+    for host <- [
+          "192.0.2.10",
+          "mail.itsm.test",
+          "localhost.example.test",
+          "::ffff:192.0.2.10",
+          ""
+        ] do
+      Application.put_env(:itsm_backend, :lab_mail,
+        enabled: true,
+        sender: "notifications@itsm.test",
+        password: "lab-sender-secret-value",
+        host: host,
+        port: 1
+      )
+
+      refute LabRelay.handles?("alice@itsm.test"), "relay accepted host #{inspect(host)}"
+
+      assert {:error, :lab_mail_disabled} =
+               LabRelay.deliver("alice@itsm.test", "S", "B", nil, "ITSM")
+    end
+
+    for host <- ["127.0.0.1", "127.0.0.53", "::1", "localhost"] do
+      Application.put_env(:itsm_backend, :lab_mail,
+        enabled: true,
+        sender: "notifications@itsm.test",
+        password: "lab-sender-secret-value",
+        host: host,
+        port: 1
+      )
+
+      assert LabRelay.handles?("alice@itsm.test"), "relay refused loopback host #{inspect(host)}"
+    end
+  end
 end

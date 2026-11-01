@@ -550,7 +550,8 @@ config :itsm_backend, :mailbox_lab_domain, System.get_env("MAILBOX_LAB_DOMAIN") 
 
 # Application mail to lab addresses goes through the lab's SMTP submission
 # service, authenticated as a lab sender account. Disabled unless both the
-# sender address (at the lab domain) and its password are configured.
+# sender address (at the lab domain) and its password are configured, and
+# unless the host is loopback: the lab takes the password without TLS.
 lab_mail_sender = System.get_env("LAB_MAIL_SENDER")
 lab_mail_password = System.get_env("LAB_MAIL_PASSWORD")
 
