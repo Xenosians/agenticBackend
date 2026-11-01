@@ -37,6 +37,7 @@ defmodule ItsmBackend.Jobs do
          {:ok, stored_job} <-
            persist_submission(job, attrs) do
       Events.publish(stored_job)
+      Events.wake_queue()
       {:ok, stored_job}
     end
   end
@@ -520,6 +521,8 @@ defmodule ItsmBackend.Jobs do
 
   defp resolve_completion_write(%Job{} = stored, _desired) do
     Events.publish(stored)
+    # The in-flight job left processing; the worker can start the next one now.
+    Events.wake_queue()
     {:ok, stored, :applied}
   end
 

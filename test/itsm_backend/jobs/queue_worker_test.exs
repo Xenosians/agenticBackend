@@ -235,6 +235,75 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
   end
 
   # ============================================================
+  # Wake-up on new work
+  #
+  # Each test drains the queue first, then retires the jobs it
+  # created, so no other test's rows are claimed or left behind.
+  # ============================================================
+
+  test "a new job is dispatched at once, without waiting for the next poll" do
+    # A poll this long would make the test time out if the worker only polled.
+    start_idle_worker!()
+
+    {:ok, created_job} =
+      Jobs.create(%{
+        user_id: "queue-worker-wake-test",
+        message: "Dispatch this as soon as it is saved."
+      })
+
+    assert_receive {:ai_dispatch, job_id, attempt, _user_id, _message}, 2_000
+    assert job_id == created_job.id
+    retire!(job_id, attempt)
+  end
+
+  test "when the running job's completion arrives, the next job starts at once" do
+    start_idle_worker!()
+
+    {:ok, first} = Jobs.create(%{user_id: "queue-worker-wake-test", message: "First request."})
+    assert_receive {:ai_dispatch, first_id, attempt, _user_id, _message}, 2_000
+    assert first_id == first.id
+
+    {:ok, second} = Jobs.create(%{user_id: "queue-worker-wake-test", message: "Second request."})
+    # One job in flight at a time: the second one waits while the first runs.
+    refute_receive {:ai_dispatch, _, _, _, _}, 200
+
+    assert {:ok, _completed, :applied} =
+             Jobs.apply_completion(first_id, attempt, "completed", %{
+               "result" => %{"answer" => "done"}
+             })
+
+    assert_receive {:ai_dispatch, second_id, second_attempt, _user_id, _message}, 2_000
+    assert second_id == second.id
+    retire!(second_id, second_attempt)
+  end
+
+  defp start_idle_worker! do
+    drain_pending!()
+    start_supervised!({QueueWorker, [poll_interval_ms: 60_000, lease_seconds: 300]})
+    # Let the startup tick finish so the queue is idle before the test's job exists.
+    _ = :sys.get_state(QueueWorker)
+    refute_received {:ai_dispatch, _, _, _, _}
+  end
+
+  # Fail closed any pending row another test left, so this test's job is the oldest.
+  defp drain_pending! do
+    case Jobs.claim_oldest(1) do
+      {:ok, nil} ->
+        :ok
+
+      {:ok, %Job{} = leftover} ->
+        {:ok, _} = Jobs.fail_processing_if_current(leftover, "Left pending by an earlier test.")
+        drain_pending!()
+    end
+  end
+
+  # The fake AI never completes; finish the dispatched attempt so it does not stay processing.
+  defp retire!(job_id, attempt) do
+    assert {:ok, _job, :applied} =
+             Jobs.apply_completion(job_id, attempt, "failed", %{"error" => "Test finished."})
+  end
+
+  # ============================================================
   # Poll helper
   # ============================================================
 

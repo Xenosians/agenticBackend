@@ -28,6 +28,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   alias ItsmBackend.Chats
   alias ItsmBackend.Jobs
+  alias ItsmBackend.Jobs.Events
   alias ItsmBackend.Jobs.Job
   alias ItsmBackend.RuntimeConfig
 
@@ -74,8 +75,13 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           :lease_seconds
         ),
       inflight_job_id: nil,
-      undispatched_failure: nil
+      undispatched_failure: nil,
+      tick_timer: nil
     }
+
+    # Saved new work and finished jobs are announced here, so the worker does not
+    # wait for its poll. The poll stays as the fallback for anything not announced.
+    :ok = Phoenix.PubSub.subscribe(ItsmBackend.PubSub, Events.queue_topic())
 
     send(
       self(),
@@ -88,6 +94,19 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # ------------------------------------------------------------
   # Poll loop
   # ------------------------------------------------------------
+
+  @impl true
+  def handle_info(:job_queue_changed, state) do
+    # Do the next poll's work now. If that frees the worker, also start the next job.
+    {:noreply, next_state} = handle_info(:tick, state)
+
+    if state.inflight_job_id != nil and next_state.inflight_job_id == nil and
+         next_state.undispatched_failure == nil do
+      handle_info(:tick, next_state)
+    else
+      {:noreply, next_state}
+    end
+  end
 
   @impl true
   def handle_info(
@@ -106,9 +125,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           end
       end
 
-    schedule_tick(next_state.poll_interval_ms)
-
-    {:noreply, next_state}
+    schedule_tick(next_state)
   end
 
   # ------------------------------------------------------------
@@ -579,11 +596,9 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   # Scheduling
   # ------------------------------------------------------------
 
-  defp schedule_tick(poll_interval_ms) do
-    Process.send_after(
-      self(),
-      :tick,
-      poll_interval_ms
-    )
+  defp schedule_tick(state) do
+    if state.tick_timer, do: Process.cancel_timer(state.tick_timer)
+
+    {:noreply, %{state | tick_timer: Process.send_after(self(), :tick, state.poll_interval_ms)}}
   end
 end
