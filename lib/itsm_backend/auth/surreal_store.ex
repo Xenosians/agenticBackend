@@ -174,23 +174,6 @@ defmodule ItsmBackend.Auth.SurrealStore do
     end
   end
 
-  def revoke_all_sessions(user_id, now) do
-    statement = """
-    UPDATE auth_session
-    SET revoked_at = $now
-    WHERE user_id = $user_id AND revoked_at = $not_revoked;
-    """
-
-    case Surreal.query(statement, %{
-           "user_id" => user_id,
-           "now" => Surreal.datetime(now),
-           "not_revoked" => nil
-         }) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   def set_task_completed_preference(user_id, enabled) do
     statement = """
     UPDATE ONLY type::record($table, $user_id)
