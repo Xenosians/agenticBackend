@@ -174,10 +174,11 @@ defmodule ItsmBackend.Auth.SurrealStore do
     end
   end
 
-  def set_task_completed_preference(user_id, enabled) do
+  @doc "Merges validated preference changes into the owner's saved preferences."
+  def set_preferences(user_id, changes) when is_map(changes) do
     statement = """
     UPDATE ONLY type::record($table, $user_id)
-    SET notification_preferences.task_completed = $enabled
+    SET notification_preferences = object::extend(notification_preferences ?? {}, $changes)
     WHERE user_id = $user_id AND status = "active"
     RETURN AFTER;
     """
@@ -186,7 +187,7 @@ defmodule ItsmBackend.Auth.SurrealStore do
            Surreal.query(statement, %{
              "table" => @user_table,
              "user_id" => user_id,
-             "enabled" => enabled
+             "changes" => changes
            }),
          {:ok, user} <- single_or_nil(results) do
       {:ok, user}

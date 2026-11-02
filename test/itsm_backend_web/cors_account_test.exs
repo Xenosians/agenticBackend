@@ -76,7 +76,7 @@ defmodule ItsmBackendWeb.CorsAccountTest do
       |> put_req_header("x-csrf-token", owner.auth.csrf_token)
       |> put(@path, %{"task_completed" => false})
 
-    assert json_response(saved, 200) == %{"preferences" => %{"task_completed" => false}}
+    assert json_response(saved, 200)["preferences"]["task_completed"] == false
     assert get_resp_header(saved, "access-control-allow-origin") == [@origin]
     assert get_resp_header(saved, "access-control-allow-credentials") == ["true"]
   end

@@ -1,8 +1,10 @@
 # Account controls
 
-The Account view uses authenticated, owner-scoped controls. Cookie-session writes require the `X-CSRF-Token` returned by sign-in or `/api/v1/auth/me`. Bearer tokens use the same persisted identity and session checks.
+The Settings view uses authenticated, owner-scoped controls. Cookie-session writes require the `X-CSRF-Token` returned by sign-in or `/api/v1/auth/me`. Bearer tokens use the same persisted identity and session checks.
 
-`GET /api/v1/auth/preferences` returns `{"preferences":{"task_completed":true}}`. `PUT` to the same endpoint accepts exactly `{"task_completed":false}` (or `true`) and returns the saved preference. Only JSON booleans are accepted. Unrecognized arguments or query parameters return 422. An absent stored preference defaults to enabled; malformed stored data and unavailable reads return 503 rather than claiming a value. An unconfirmed write is read back and succeeds only if the stored value matches the request.
+`GET /api/v1/auth/preferences` returns `{"preferences":{"task_completed":true,"theme":"dark","accent":"mono"}}`. `PUT` to the same endpoint accepts any non-empty subset of those three settings and returns all saved settings; settings left out keep their saved values. `task_completed` takes a JSON boolean, `theme` one of `dark`, `light` or `system`, and `accent` one of `mono`, `blue`, `teal`, `green`, `amber`, `rose` or `violet`. Any other value, an empty body, unrecognized arguments or query parameters return 422. Absent stored settings default to the values above; a stored value outside these lists and unavailable reads return 503 rather than claiming a value. An unconfirmed write is read back and succeeds only if every stored value matches the request.
+
+Appearance settings follow the owner across browsers because the server stores them; the frontend keeps nothing in browser storage.
 
 The preference controls new automatic **completed-task** notifications only. The deployment's `TASK_COMPLETION_MAIL_ENABLED` remains the master switch. Authentication, approval, failure, denial and reconciliation mail, explicitly requested notifications, and the separately managed Friday report are unaffected. Already queued outbox messages are neither cancelled nor resent. Saving a preference does not dispatch or replay tasks or mail.
 

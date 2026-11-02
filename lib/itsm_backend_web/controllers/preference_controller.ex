@@ -3,7 +3,7 @@ defmodule ItsmBackendWeb.PreferenceController do
   use ItsmBackendWeb.RequestContract
 
   request_contract(:show, [])
-  request_contract(:update, required_body: ["task_completed"])
+  request_contract(:update, optional_body: ["task_completed", "theme", "accent"])
 
   alias ItsmBackend.Auth.Preferences
   alias ItsmBackendWeb.{AuthRequest, PublicError}
@@ -48,7 +48,7 @@ defmodule ItsmBackendWeb.PreferenceController do
       conn,
       :unprocessable_entity,
       "invalid_preferences",
-      "Choose true or false for task completion emails."
+      "Send at least one setting: task_completed true or false, theme dark, light or system, or one of the offered accents."
     )
   end
 
@@ -57,7 +57,7 @@ defmodule ItsmBackendWeb.PreferenceController do
       conn,
       :service_unavailable,
       code,
-      "The notification preference could not be confirmed. Reload Account before changing it again.",
+      "The setting could not be confirmed. Reload Settings before changing it again.",
       retryable: true
     )
   end

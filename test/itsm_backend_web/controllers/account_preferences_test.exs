@@ -5,21 +5,22 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
   alias ItsmBackend.Auth.{Preferences, SurrealStore}
   alias ItsmBackendWeb.{AuthTestSupport, StorageFaultProxy}
 
-  @preference_write ~r/SET notification_preferences.task_completed/
+  @preference_write ~r/SET notification_preferences/
   @other_revoke ~r/LET \$revoked = UPDATE auth_session/
+  @defaults %{"task_completed" => true, "theme" => "dark", "accent" => "mono"}
 
   test "preferences default on, persist explicitly, and never update another owner" do
     owner = AuthTestSupport.authenticated_identity!()
     other = AuthTestSupport.authenticated_identity!()
 
     assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200) ==
-             %{"preferences" => %{"task_completed" => true}}
+             %{"preferences" => @defaults}
 
     assert json_response(
              put(authed(owner), "/api/v1/auth/preferences", %{"task_completed" => false}),
              200
            ) ==
-             %{"preferences" => %{"task_completed" => false}}
+             %{"preferences" => %{@defaults | "task_completed" => false}}
 
     assert {:ok, %{"task_completed" => false}} = Preferences.get(owner.user["user_id"])
     assert {:ok, %{"task_completed" => true}} = Preferences.get(other.user["user_id"])
@@ -28,7 +29,78 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
              put(authed(owner), "/api/v1/auth/preferences", %{"task_completed" => true}),
              200
            ) ==
-             %{"preferences" => %{"task_completed" => true}}
+             %{"preferences" => @defaults}
+  end
+
+  test "appearance saves only what was sent and keeps the other settings" do
+    owner = AuthTestSupport.authenticated_identity!()
+    other = AuthTestSupport.authenticated_identity!()
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"theme" => "light"}),
+             200
+           )["preferences"] == %{@defaults | "theme" => "light"}
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{
+               "accent" => "teal",
+               "task_completed" => false
+             }),
+             200
+           )["preferences"] == %{
+             "task_completed" => false,
+             "theme" => "light",
+             "accent" => "teal"
+           }
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200)["preferences"] ==
+             %{"task_completed" => false, "theme" => "light", "accent" => "teal"}
+
+    assert {:ok, @defaults} = Preferences.get(other.user["user_id"])
+
+    for theme <- ["dark", "system", "light"] do
+      assert json_response(
+               put(authed(owner), "/api/v1/auth/preferences", %{"theme" => theme}),
+               200
+             )["preferences"]["theme"] == theme
+    end
+  end
+
+  test "appearance accepts only the offered themes and accents" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    for body <- [
+          %{"theme" => "blue"},
+          %{"theme" => "Light"},
+          %{"theme" => nil},
+          %{"theme" => true},
+          %{"accent" => "#ff0000"},
+          %{"accent" => "url(javascript:alert(1))"},
+          %{"accent" => ""},
+          %{"theme" => "dark", "font" => "comic"}
+        ] do
+      assert json_response(put(authed(owner), "/api/v1/auth/preferences", body), 422)
+    end
+
+    assert {:ok, @defaults} = Preferences.get(owner.user["user_id"])
+  end
+
+  test "an unknown stored appearance is unknown, not replaced by a default" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    assert {:ok, _} =
+             Surreal.query(
+               "UPDATE ONLY type::record('app_user', $id) SET notification_preferences.theme = 'neon';",
+               %{"id" => owner.user["user_id"]}
+             )
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 503)["error"] ==
+             "preferences_unavailable"
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"theme" => "dark"}),
+             503
+           )["error"] == "preferences_save_unconfirmed"
   end
 
   test "preference reads and writes authenticate, writes require CSRF and strict booleans" do
