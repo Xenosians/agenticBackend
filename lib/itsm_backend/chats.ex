@@ -193,7 +193,8 @@ defmodule ItsmBackend.Chats do
             "created_at" => encode_time(job.completed_at || job.claimed_at || job.created_at),
             "status" => ItsmBackend.Jobs.Lifecycle.wire_status(job.status, version),
             "proposed_tool" => job.proposed_tool,
-            "references" => answer_references(job)
+            "references" => answer_references(job),
+            "skills" => answer_skills(job)
           }
         ]
     end
@@ -236,6 +237,32 @@ defmodule ItsmBackend.Chats do
   end
 
   defp valid_citation?(_), do: false
+
+  @max_answer_skills 2
+  @skill_keys ~w(name version id sha256)
+  @skill_name ~r/\A[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\z/
+
+  # The owner's skills that guided the answer: identities only, so a reloaded
+  # chat can say which skill versions shaped it. Skill text never enters history.
+  defp answer_skills(%{result: %{"skills" => skills}}) when is_list(skills) do
+    skills
+    |> Enum.filter(&valid_skill?/1)
+    |> Enum.uniq_by(& &1["id"])
+    |> Enum.take(@max_answer_skills)
+  end
+
+  defp answer_skills(_job), do: []
+
+  defp valid_skill?(
+         %{"name" => name, "version" => version, "id" => id, "sha256" => digest} = skill
+       )
+       when map_size(skill) == length(@skill_keys) and is_binary(name) and is_integer(version) and
+              version > 0 and is_binary(id) and is_binary(digest) do
+    Regex.match?(@skill_name, name) and Regex.match?(@resource_id, id) and
+      Regex.match?(@digest, digest)
+  end
+
+  defp valid_skill?(_), do: false
 
   defp short_text?(value, limit), do: value != "" and String.length(value) <= limit
 
