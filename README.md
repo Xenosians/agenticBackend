@@ -15,6 +15,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
 - Owner feedback on a task's result (a critique, optionally with the correct result), saved once per submission identity for review with a copy of the request, task status, route, proposal and answer it describes. Feedback never changes the task, its approval, tool policy or a model.
 - A reviewer queue for that feedback: administrators (`AUTH_ADMIN_EMAILS`) list pending feedback oldest first and record one decision per record — `accepted` or `dismissed`, with a reason. Repeating the same decision returns it, a different one is a conflict, and a decision never changes the task, its approval, permissions or weights.
+- Accepted corrections as training data: the owner previews, then saves, the corrections a reviewer accepted on their own tasks as the next version of their "Accepted corrections" training dataset. Only accepted corrections cross to the AI service; saving goes through training admission and never starts a run.
 - Authenticated WebSocket status updates for the browser and bounded progress events from the AI runtime, with REST recovery after reconnect.
 - A durable account → Jira ticket workflow with separately bound approvals, verified provider results, and completion notifications through the existing mail outbox.
 - Authenticated model/harness/dataset commands proxied to the AI service; ownership comes from the session and mutations require CSRF.
@@ -89,6 +90,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | User extensions (models, datasets, Lua row transforms; the owner always comes from the session) | `GET/POST /api/v1/extensions` |
 | Integration status | `GET /api/v1/integrations` |
 | Learning readiness and candidate SFT runs (never serving or promotion) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight`, `GET/POST /api/v1/learning/runs`, `POST /api/v1/learning/runs/:id/cancel` |
+| The owner's accepted corrections as training data (preview, then save a dataset version; never starts a run) | `GET/POST /api/v1/learning/corrections` |
 | Saved workflows (each run is one durable job) | `GET/POST /api/v1/workflows`, `GET/PUT/DELETE /api/v1/workflows/:id`, `GET/POST /api/v1/workflows/:id/runs` |
 | Desired topologies and advisory drift (read-only) | `GET/POST /api/v1/topologies`, `GET/PUT/DELETE /api/v1/topologies/:id`, `POST /api/v1/topologies/:id/drift` |
 | PCB netlist inspection (no actuation) | `POST /api/v1/engineering/netlist` |

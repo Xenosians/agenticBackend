@@ -76,6 +76,34 @@ defmodule ItsmBackend.Learning.PublicContract do
 
   def valid_cancelled_run?(data, run_id), do: run?(data) and data["run_id"] == run_id
 
+  @doc """
+  A corrections receipt: a preview saves nothing (`ready`, `too_few` or
+  `unchanged`), and a save reports `saved` with the dataset version it added.
+  """
+  def valid_corrections?(data, apply?) do
+    exact?(data, ~w(schema status usable withheld minimum dataset)) and
+      data["schema"] == "learning-corrections.v1" and
+      Enum.all?(~w(usable withheld minimum), &(is_integer(data[&1]) and data[&1] >= 0)) and
+      corrections_outcome?(data, apply?)
+  end
+
+  defp corrections_outcome?(%{"status" => "saved", "dataset" => dataset}, true),
+    do: corrections_dataset?(dataset)
+
+  defp corrections_outcome?(%{"status" => "unchanged", "dataset" => dataset}, false),
+    do: corrections_dataset?(dataset)
+
+  defp corrections_outcome?(%{"status" => status, "dataset" => dataset}, false)
+       when status in ~w(ready too_few),
+       do: is_nil(dataset) or corrections_dataset?(dataset)
+
+  defp corrections_outcome?(_data, _apply?), do: false
+
+  defp corrections_dataset?(row) do
+    exact?(row, ~w(id name version lineage_id sha256 train_count validation_count)) and
+      text?(row["name"], 120) and dataset_fields?(row)
+  end
+
   def valid_resolved_run?(data, submission),
     do: run?(data) and hex?(submission, @id) and data["submission_id"] == submission
 

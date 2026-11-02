@@ -64,6 +64,21 @@ defmodule ItsmBackend.JobFeedback.SurrealStore do
     end
   end
 
+  @doc "The owner's corrections a reviewer accepted, oldest decision first."
+  def accepted_corrections(user_id, limit) do
+    statement = """
+    SELECT * FROM job_feedback
+    WHERE user_id = $user_id AND review_status = "accepted" AND kind = "correction"
+    ORDER BY review.reviewed_at ASC
+    LIMIT $limit;
+    """
+
+    with {:ok, results} <- Surreal.query(statement, %{"user_id" => user_id, "limit" => limit}),
+         {:ok, rows} <- rows(results) do
+      {:ok, Enum.map(rows || [], &public/1)}
+    end
+  end
+
   @doc """
   Records a decision once: the UPDATE only applies while the record is still
   pending, so concurrent reviewers cannot overwrite each other. A repeat of

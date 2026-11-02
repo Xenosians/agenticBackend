@@ -42,6 +42,8 @@ defmodule ItsmBackendWeb.Router do
     get "/v1/learning/runs/resolve", LearningController, :resolve_run
     post "/v1/learning/runs", LearningController, :start_run
     post "/v1/learning/runs/:id/cancel", LearningController, :cancel_run
+    get "/v1/learning/corrections", LearningController, :corrections
+    post "/v1/learning/corrections", LearningController, :save_corrections
     get "/v1/workflows", WorkflowController, :index
     post "/v1/workflows", WorkflowController, :create
     get "/v1/workflows/:id", WorkflowController, :show

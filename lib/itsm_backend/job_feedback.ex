@@ -18,6 +18,10 @@ defmodule ItsmBackend.JobFeedback do
 
   @note_max 2000
   @list_limit 200
+  # As many accepted corrections as one training dataset version takes, and the
+  # longest request one training example holds.
+  @max_training_corrections 500
+  @max_training_request 20_000
   # Feedback describes a result the user has seen: an answer, a proposal
   # awaiting a decision, or a final outcome.
   @reviewable_statuses ~w(waiting_approval completed failed denied outcome_unknown reconciliation_required)
@@ -81,6 +85,59 @@ defmodule ItsmBackend.JobFeedback do
   end
 
   def review(_reviewer, _feedback_id, _params), do: {:error, :invalid_review}
+
+  @doc """
+  The owner's corrections a reviewer accepted, as training pairs: the request
+  the owner sent and the result they said it should have had. Pending,
+  dismissed and critique-only feedback is never included, nor is a request
+  too long to be one training example.
+  """
+  def accepted_corrections(user) do
+    with {:ok, records} <-
+           SurrealStore.accepted_corrections(user["user_id"], @max_training_corrections) do
+      {:ok, Enum.flat_map(records, &training_correction/1)}
+    end
+  end
+
+  defp training_correction(%{
+         "feedback_id" => feedback_id,
+         "correction" => correction,
+         "subject" => %{"request" => request},
+         "review" => %{"reviewed_at" => reviewed_at}
+       })
+       when is_binary(correction) and is_binary(request) do
+    with true <- String.length(request) <= @max_training_request,
+         {:ok, reviewed_at} <- utc_timestamp(reviewed_at) do
+      [
+        %{
+          "feedback_id" => feedback_id,
+          "request" => request,
+          "correction" => correction,
+          "reviewed_at" => reviewed_at
+        }
+      ]
+    else
+      _ -> []
+    end
+  end
+
+  defp training_correction(_record), do: []
+
+  defp utc_timestamp(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, timestamp, _offset} ->
+        {:ok,
+         timestamp
+         |> DateTime.shift_zone!("Etc/UTC")
+         |> DateTime.truncate(:microsecond)
+         |> DateTime.to_iso8601()}
+
+      {:error, _reason} ->
+        :error
+    end
+  end
+
+  defp utc_timestamp(_value), do: :error
 
   defp require_reviewer(%{"role" => "admin"}), do: :ok
   defp require_reviewer(_user), do: {:error, :forbidden}

@@ -11,6 +11,9 @@ defmodule ItsmBackendWeb.LearningController do
   use ItsmBackendWeb, :controller
   use ItsmBackendWeb.RequestContract
 
+  require Logger
+
+  alias ItsmBackend.JobFeedback
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackend.Learning.PublicContract
   alias ItsmBackendWeb.{AuthRequest, PublicError}
@@ -30,6 +33,9 @@ defmodule ItsmBackendWeb.LearningController do
     learning_training_membership_invalid
     learning_check_changed
     learning_run_not_ready
+    learning_corrections_too_few
+    learning_corrections_unchanged
+    learning_corrections_refused
   )
 
   request_contract(:index, [])
@@ -38,6 +44,8 @@ defmodule ItsmBackendWeb.LearningController do
   request_contract(:resolve_run, required_query: ["submission_id"])
   request_contract(:start_run, required_body: @run_fields)
   request_contract(:cancel_run, [])
+  request_contract(:corrections, [])
+  request_contract(:save_corrections, [])
 
   def index(conn, params) do
     with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn) do
@@ -131,6 +139,44 @@ defmodule ItsmBackendWeb.LearningController do
     end
   end
 
+  @doc "Previews the owner's accepted corrections as training data; saves nothing."
+  def corrections(conn, params) do
+    with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn) do
+      if map_size(params) == 0,
+        do: forward_corrections(conn, ctx.user, false),
+        else: refused(conn, "invalid_learning_request")
+    else
+      {:error, conn} -> conn
+    end
+  end
+
+  @doc "Saves the owner's accepted corrections as the next training dataset version."
+  def save_corrections(conn, params) do
+    with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn, csrf: true) do
+      if map_size(conn.query_params) == 0 and map_size(params) == 0,
+        do: forward_corrections(conn, ctx.user, true),
+        else: refused(conn, "invalid_learning_request")
+    else
+      {:error, conn} -> conn
+    end
+  end
+
+  # Only corrections a reviewer accepted on this owner's own tasks cross to the AI.
+  defp forward_corrections(conn, user, apply?) do
+    case JobFeedback.accepted_corrections(user) do
+      {:ok, corrections} ->
+        forward(conn, "/internal/v1/learning/corrections", %{
+          owner: user["user_id"],
+          apply: apply?,
+          corrections: corrections
+        })
+
+      {:error, reason} ->
+        Logger.error("accepted corrections lookup failed: #{inspect(reason)}")
+        unavailable(conn)
+    end
+  end
+
   defp forward(conn, path, body) do
     config = RuntimeConfig.ai_service!()
 
@@ -210,6 +256,9 @@ defmodule ItsmBackendWeb.LearningController do
 
   defp valid_receipt?("/internal/v1/learning/runs/cancel", response, %{run_id: run_id}),
     do: PublicContract.valid_cancelled_run?(response, run_id)
+
+  defp valid_receipt?("/internal/v1/learning/corrections", response, %{apply: apply?}),
+    do: PublicContract.valid_corrections?(response, apply?)
 
   defp unavailable(conn) do
     PublicError.render(
