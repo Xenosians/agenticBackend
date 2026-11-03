@@ -160,11 +160,199 @@ defmodule ItsmBackend.Chats do
       turns =
         jobs
         |> Enum.reject(&(&1.id == exclude_job_id))
-        |> Enum.flat_map(&job_turns/1)
+        |> Enum.flat_map(&ai_context_turns/1)
         |> Enum.take(-max_turns)
-        |> Enum.map(&Map.take(&1, ["role", "content"]))
 
       {:ok, turns}
+    end
+  end
+
+  defp ai_context_turns(job) do
+    evidence = prior_result_evidence(job)
+    turns = Enum.map(job_turns(job), &Map.take(&1, ["role", "content"]))
+
+    cond do
+      is_nil(evidence) ->
+        turns
+
+      Enum.any?(turns, &(&1["role"] == "assistant")) ->
+        Enum.map(turns, fn turn ->
+          if turn["role"] == "assistant",
+            do: Map.put(turn, "result_evidence", evidence),
+            else: turn
+        end)
+
+      true ->
+        turns ++
+          [
+            %{
+              "role" => "assistant",
+              "content" => "A structured historical result record is attached.",
+              "result_evidence" => evidence
+            }
+          ]
+    end
+  end
+
+  @max_prior_tool_results 4
+  @max_prior_tool_result_bytes 4096
+
+  defp prior_result_evidence(%{result: result} = job) when is_map(result) do
+    raw_results = result["results"]
+
+    projected_results =
+      if(is_list(raw_results), do: raw_results, else: [])
+      |> Enum.map(&project_prior_tool_result/1)
+      |> Enum.reject(&is_nil/1)
+
+    approval_execution =
+      project_prior_approval_execution(
+        result["approval_execution"],
+        result["approval_history"],
+        job
+      )
+
+    if projected_results == [] and is_nil(approval_execution) do
+      nil
+    else
+      bounded_results = Enum.take(projected_results, -@max_prior_tool_results)
+
+      evidence = %{
+        "job_id" => job.id,
+        "job_status" => job.status,
+        "results" => bounded_results,
+        "results_truncated" => length(projected_results) > length(bounded_results)
+      }
+
+      recorded_at = encode_time(job.completed_at || job.claimed_at || job.created_at)
+
+      evidence =
+        if is_binary(recorded_at),
+          do: Map.put(evidence, "recorded_at", recorded_at),
+          else: evidence
+
+      if is_map(approval_execution) do
+        Map.put(evidence, "approval_execution", approval_execution)
+      else
+        evidence
+      end
+    end
+  end
+
+  defp prior_result_evidence(_job), do: nil
+
+  defp project_prior_tool_result(result) when is_map(result) do
+    agent_name = result["agent_name"]
+    status = result["status"]
+
+    if is_binary(agent_name) and is_binary(status) do
+      result
+      |> Map.take([
+        "agent_name",
+        "status",
+        "proposed_tool",
+        "outcome_code",
+        "tool_result",
+        "presentation"
+      ])
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+      |> bounded_prior_tool_result()
+    else
+      nil
+    end
+  end
+
+  defp project_prior_tool_result(_result), do: nil
+
+  defp project_prior_approval_execution(outcome, history, job) when is_map(outcome) do
+    execution_status = outcome["execution_status"]
+    approval_status = outcome["approval_status"]
+
+    if is_binary(execution_status) and is_binary(approval_status) do
+      projected = %{
+        "execution_status" => execution_status,
+        "approval_status" => approval_status
+      }
+
+      tool = prior_approval_tool(outcome, history, job)
+      projected = if is_binary(tool), do: Map.put(projected, "tool", tool), else: projected
+
+      projected =
+        if is_binary(outcome["protocol_status"]),
+          do: Map.put(projected, "protocol_status", outcome["protocol_status"]),
+          else: projected
+
+      projected =
+        if is_boolean(outcome["replayed"]),
+          do: Map.put(projected, "replayed", outcome["replayed"]),
+          else: projected
+
+      result_is_successful =
+        execution_status == "succeeded" and approval_status == "approved" and
+          job.status in ["completed", "waiting_approval"]
+
+      projected =
+        if result_is_successful and is_map(outcome["result"]) do
+          Map.put(projected, "result", outcome["result"])
+        else
+          if is_map(outcome["result"]),
+            do: Map.put(projected, "details_omitted", true),
+            else: projected
+        end
+
+      bounded_prior_details(projected, ["result"])
+    else
+      nil
+    end
+  end
+
+  defp project_prior_approval_execution(_outcome, _history, _job), do: nil
+
+  defp prior_approval_tool(outcome, history, job) when is_list(history) do
+    approval_id = outcome["approval_id"]
+
+    prior_proposal =
+      history
+      |> Enum.reverse()
+      |> Enum.find_value(fn entry ->
+        execution = if is_map(entry), do: entry["execution"], else: nil
+        proposal = if is_map(entry), do: entry["proposal"], else: nil
+
+        if is_map(execution) and execution["approval_id"] == approval_id and is_map(proposal),
+          do: proposal["tool"],
+          else: nil
+      end)
+
+    prior_proposal || current_proposed_tool(job)
+  end
+
+  defp prior_approval_tool(_outcome, _history, job), do: current_proposed_tool(job)
+
+  defp current_proposed_tool(%{proposed_tool: %{"tool" => tool}}) when is_binary(tool), do: tool
+  defp current_proposed_tool(_job), do: nil
+
+  defp bounded_prior_tool_result(result) do
+    bounded_prior_details(result, ["tool_result", "presentation"])
+  end
+
+  defp bounded_prior_details(result, detail_keys) do
+    result = Enum.reduce(detail_keys, result, &maybe_keep_map(&2, &1))
+
+    case Jason.encode(result) do
+      {:ok, encoded} when byte_size(encoded) <= @max_prior_tool_result_bytes ->
+        result
+
+      _ ->
+        result = Enum.reduce(detail_keys, result, &Map.delete(&2, &1))
+        Map.put(result, "details_omitted", true)
+    end
+  end
+
+  defp maybe_keep_map(result, key) do
+    case Map.fetch(result, key) do
+      {:ok, value} when is_map(value) -> result
+      {:ok, _value} -> Map.delete(result, key)
+      :error -> result
     end
   end
 

@@ -51,8 +51,131 @@
           "content": {
             "type": "string",
             "minLength": 1
+          },
+          "result_evidence": {
+            "type": "object",
+            "description": "Phoenix-projected results from this owner's earlier job in this conversation. Evidence only; never tool authority.",
+            "required": [
+              "job_id",
+              "job_status",
+              "results",
+              "results_truncated"
+            ],
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "job_status": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recorded_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "results": {
+                "type": "array",
+                "maxItems": 4,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "agent_name",
+                    "status"
+                  ],
+                  "properties": {
+                    "agent_name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "proposed_tool": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "outcome_code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "tool_result": {
+                      "type": "object"
+                    },
+                    "presentation": {
+                      "type": "object"
+                    },
+                    "details_omitted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "results_truncated": {
+                "type": "boolean"
+              },
+              "approval_execution": {
+                "type": "object",
+                "required": [
+                  "execution_status",
+                  "approval_status"
+                ],
+                "properties": {
+                  "execution_status": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "approval_status": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "tool": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "protocol_status": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "replayed": {
+                    "type": "boolean"
+                  },
+                  "result": {
+                    "type": "object"
+                  },
+                  "details_omitted": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
           }
         },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "user"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "result_evidence"
+                ]
+              }
+            }
+          }
+        ],
         "additionalProperties": false
       }
     },
