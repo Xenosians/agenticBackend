@@ -10,10 +10,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   1. Reconciles one expired durable processing attempt when idle.
   2. Checks AI readiness when no recovery work is pending.
-  3. Atomically claims the oldest pending job.
+  3. Atomically claims the oldest pending job whose chat has no
+     turn running, so one chat's turns stay in order.
   4. Sends the job to FastAPI.
   5. Expects a 202 Accepted acknowledgement.
-  6. Keeps at most one locally tracked in-flight job.
+  6. Keeps at most `max_parallel_jobs` locally tracked in-flight
+     jobs (default 1).
   7. Observes durable completion state.
   8. Fails expired processing attempts closed without automatic
      redispatch.
@@ -74,7 +76,14 @@ defmodule ItsmBackend.Jobs.QueueWorker do
           opts,
           :lease_seconds
         ),
-      inflight_job_id: nil,
+      # Callers that do not configure a limit keep the serial behaviour.
+      max_parallel_jobs:
+        Keyword.get(
+          opts,
+          :max_parallel_jobs,
+          1
+        ),
+      inflight_job_ids: [],
       undispatched_failure: nil,
       tick_timer: nil
     }
@@ -97,15 +106,13 @@ defmodule ItsmBackend.Jobs.QueueWorker do
 
   @impl true
   def handle_info(:job_queue_changed, state) do
-    # Do the next poll's work now. If that frees the worker, also start the next job.
-    {:noreply, next_state} = handle_info(:tick, state)
+    # Do the next poll's work now, and refill any slot a finished job freed.
+    next_state =
+      state
+      |> check_inflight_jobs()
+      |> resolve_or_fill(state.max_parallel_jobs)
 
-    if state.inflight_job_id != nil and next_state.inflight_job_id == nil and
-         next_state.undispatched_failure == nil do
-      handle_info(:tick, next_state)
-    else
-      {:noreply, next_state}
-    end
+    schedule_tick(next_state)
   end
 
   @impl true
@@ -113,20 +120,47 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         :tick,
         state
       ) do
-    next_state =
-      case state.undispatched_failure do
-        %Job{} = job ->
-          persist_undispatched_failure(job, state)
+    # A slot this poll frees is refilled by the next poll or queue
+    # announcement, never within the same poll.
+    free_slots = state.max_parallel_jobs - length(state.inflight_job_ids)
 
-        nil ->
-          case state.inflight_job_id do
-            nil -> reconcile_or_dispatch(state)
-            job_id -> check_inflight(job_id, state)
-          end
-      end
+    next_state =
+      state
+      |> check_inflight_jobs()
+      |> resolve_or_fill(free_slots)
 
     schedule_tick(next_state)
   end
+
+  defp resolve_or_fill(%{undispatched_failure: %Job{} = job} = state, _slots),
+    do: persist_undispatched_failure(job, state)
+
+  defp resolve_or_fill(state, slots), do: fill_free_slots(state, slots)
+
+  # Starts work in up to `slots` free slots. Stops as soon as a step starts
+  # nothing, so a requeued or rejected request is never retried in the same pass.
+  defp fill_free_slots(state, slots) do
+    if slots > 0 and length(state.inflight_job_ids) < state.max_parallel_jobs do
+      next_state = reconcile_or_dispatch(state)
+
+      if length(next_state.inflight_job_ids) > length(state.inflight_job_ids) and
+           next_state.undispatched_failure == nil,
+         do: fill_free_slots(next_state, slots - 1),
+         else: next_state
+    else
+      state
+    end
+  end
+
+  defp check_inflight_jobs(state) do
+    Enum.reduce(state.inflight_job_ids, state, &check_inflight/2)
+  end
+
+  defp add_inflight(state, job_id),
+    do: %{state | inflight_job_ids: state.inflight_job_ids ++ [job_id]}
+
+  defp drop_inflight(state, job_id),
+    do: %{state | inflight_job_ids: List.delete(state.inflight_job_ids, job_id)}
 
   # ------------------------------------------------------------
   # Idle reconciliation
@@ -249,10 +283,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "ack=#{inspect(ack)}"
         )
 
-        %{
-          state
-          | inflight_job_id: job.id
-        }
+        add_inflight(state, job.id)
 
       {:error, {:context_projection_failed, _reason}} ->
         Logger.error(
@@ -308,10 +339,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "reason=#{inspect(dispatch_error_summary(reason))}"
         )
 
-        %{
-          state
-          | inflight_job_id: job.id
-        }
+        add_inflight(state, job.id)
     end
   end
 
@@ -352,12 +380,12 @@ defmodule ItsmBackend.Jobs.QueueWorker do
   defp persist_undispatched_failure(%Job{} = job, state) do
     case Jobs.fail_processing_if_current(job, job.error, "failed") do
       {:ok, %Job{status: "failed"}} ->
-        %{state | inflight_job_id: nil, undispatched_failure: nil}
+        %{state | undispatched_failure: nil}
 
       {:ok, nil} ->
         # A concurrent state, attempt or lease change invalidated this exact
         # disposition. Never overwrite it or dispatch the request again.
-        %{state | inflight_job_id: nil, undispatched_failure: nil}
+        %{state | undispatched_failure: nil}
 
       {:error, reason} ->
         Logger.error(
@@ -367,7 +395,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
         # Retain only the exact failed claim. A later tick retries persistence,
         # never AI dispatch. After a process crash the usual durable recovery is
         # conservative because this local proof is no longer available.
-        %{state | inflight_job_id: nil, undispatched_failure: job}
+        %{state | undispatched_failure: job}
     end
   end
 
@@ -460,10 +488,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "status=#{job.status}"
         )
 
-        %{
-          state
-          | inflight_job_id: nil
-        }
+        drop_inflight(state, job_id)
 
       {:error, :not_found} ->
         Logger.warning(
@@ -471,10 +496,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "job_id=#{job_id}"
         )
 
-        %{
-          state
-          | inflight_job_id: nil
-        }
+        drop_inflight(state, job_id)
 
       {:error, reason} ->
         Logger.error(
@@ -515,10 +537,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "attempt=#{failed_job.attempts}"
         )
 
-        %{
-          state
-          | inflight_job_id: nil
-        }
+        drop_inflight(state, job.id)
 
       {:ok, nil} ->
         Logger.info(
@@ -528,10 +547,7 @@ defmodule ItsmBackend.Jobs.QueueWorker do
             "attempt=#{job.attempts}"
         )
 
-        %{
-          state
-          | inflight_job_id: nil
-        }
+        drop_inflight(state, job.id)
 
       {:error, reason} ->
         Logger.error(

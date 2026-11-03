@@ -257,7 +257,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
   end
 
   test "when the running job's completion arrives, the next job starts at once" do
-    start_idle_worker!()
+    start_idle_worker!(max_parallel_jobs: 1)
 
     {:ok, first} = Jobs.create(%{user_id: "queue-worker-wake-test", message: "First request."})
     assert_receive {:ai_dispatch, first_id, attempt, _user_id, _message}, 2_000
@@ -277,9 +277,79 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
     retire!(second_id, second_attempt)
   end
 
-  defp start_idle_worker! do
+  test "jobs from different chats, or without a chat, run side by side up to the limit" do
+    start_idle_worker!(max_parallel_jobs: 2)
+
+    first = create_job!(nil, "Check the router.")
+    first_attempt = assert_dispatched!(first)
+
+    second = create_job!(nil, "Check the VPN.")
+    second_attempt = assert_dispatched!(second)
+
+    # Both slots are taken, so a third chat waits for one to free.
+    third = create_job!(new_chat_id(), "Check the mail server.")
+    refute_receive {:ai_dispatch, _, _, _, _}, 200
+
+    complete!(first.id, first_attempt)
+    third_attempt = assert_dispatched!(third)
+
+    retire!(second.id, second_attempt)
+    retire!(third.id, third_attempt)
+  end
+
+  test "a chat's next turn waits for its running turn while other chats proceed" do
+    start_idle_worker!(max_parallel_jobs: 2)
+    chat_id = new_chat_id()
+
+    turn_one = create_job!(chat_id, "Create a ticket for the VPN outage.")
+    one_attempt = assert_dispatched!(turn_one)
+
+    # A slot is free, but this chat already has a turn running: the next turn
+    # must see that turn's result, so it waits.
+    turn_two = create_job!(chat_id, "Was the ticket created?")
+    refute_receive {:ai_dispatch, _, _, _, _}, 200
+
+    other = create_job!(new_chat_id(), "Check the router.")
+    other_attempt = assert_dispatched!(other)
+
+    complete!(turn_one.id, one_attempt)
+    two_attempt = assert_dispatched!(turn_two)
+
+    retire!(other.id, other_attempt)
+    retire!(turn_two.id, two_attempt)
+  end
+
+  defp create_job!(chat_id, message) do
+    {:ok, job} =
+      Jobs.create(%{
+        user_id: "queue-worker-parallel-test",
+        conversation_id: chat_id,
+        message: message
+      })
+
+    job
+  end
+
+  defp new_chat_id, do: "queue-worker-chat-#{System.unique_integer([:positive])}"
+
+  defp assert_dispatched!(%Job{id: expected_id}) do
+    assert_receive {:ai_dispatch, job_id, attempt, _user_id, _message}, 2_000
+    assert job_id == expected_id
+    attempt
+  end
+
+  defp complete!(job_id, attempt) do
+    assert {:ok, _completed, :applied} =
+             Jobs.apply_completion(job_id, attempt, "completed", %{
+               "result" => %{"answer" => "done"}
+             })
+  end
+
+  defp start_idle_worker!(options \\ [max_parallel_jobs: 1]) do
     drain_pending!()
-    start_supervised!({QueueWorker, [poll_interval_ms: 60_000, lease_seconds: 300]})
+
+    start_supervised!({QueueWorker, [poll_interval_ms: 60_000, lease_seconds: 300] ++ options})
+
     # Let the startup tick finish so the queue is idle before the test's job exists.
     _ = :sys.get_state(QueueWorker)
     refute_received {:ai_dispatch, _, _, _, _}

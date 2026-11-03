@@ -216,14 +216,16 @@ defmodule ItsmBackend.RuntimeConfigTest do
       :queue_worker,
       enabled: "false",
       poll_interval_ms: "250",
-      lease_seconds: "30"
+      lease_seconds: "30",
+      max_parallel_jobs: "2"
     )
 
     assert RuntimeConfig.queue_worker!() ==
              %{
                enabled: false,
                poll_interval_ms: 250,
-               lease_seconds: 30
+               lease_seconds: 30,
+               max_parallel_jobs: 2
              }
   end
 
@@ -236,12 +238,33 @@ defmodule ItsmBackend.RuntimeConfigTest do
       lease_seconds: 30
     )
 
+    # Without a parallel limit the worker keeps one job in flight.
     assert RuntimeConfig.queue_worker!() ==
              %{
                enabled: false,
                poll_interval_ms: 250,
-               lease_seconds: 30
+               lease_seconds: 30,
+               max_parallel_jobs: 1
              }
+  end
+
+  for value <- [0, 3, "3", "two", -1] do
+    test "rejects a parallel job limit of #{inspect(value)}" do
+      Application.put_env(
+        :itsm_backend,
+        :queue_worker,
+        enabled: true,
+        poll_interval_ms: 250,
+        lease_seconds: 30,
+        max_parallel_jobs: unquote(value)
+      )
+
+      assert_raise RuntimeConfig.Error,
+                   ~r/max_parallel_jobs/,
+                   fn ->
+                     RuntimeConfig.queue_worker!()
+                   end
+    end
   end
 
   test "rejects missing queue worker fields" do

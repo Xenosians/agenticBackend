@@ -43,6 +43,24 @@ defmodule ItsmBackend.Chats.SurrealStore do
   end
 
   @doc """
+  The owner's chats that have a turn still in progress: queued, running or
+  waiting for the owner's approval.
+  """
+  def working_chat_ids(user_id) do
+    statement = """
+    SELECT VALUE conversation_id FROM job
+    WHERE user_id = $user_id
+      AND status INSIDE ["pending", "processing", "waiting_approval"]
+      AND type::is_string(conversation_id);
+    """
+
+    with {:ok, results} <- Surreal.query(statement, %{"user_id" => user_id}),
+         {:ok, ids} <- rows(results) do
+      {:ok, MapSet.new(ids || [])}
+    end
+  end
+
+  @doc """
   One owner's saved turns whose request text contains `needle`. The needle is
   a bound parameter compared case-insensitively as literal text.
   """

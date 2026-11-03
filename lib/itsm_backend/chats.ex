@@ -27,11 +27,17 @@ defmodule ItsmBackend.Chats do
   end
 
   def list(user) do
-    with {:ok, chats} <- SurrealStore.list_for_user(user["user_id"]) do
+    with {:ok, chats} <- SurrealStore.list_for_user(user["user_id"]),
+         {:ok, working} <- SurrealStore.working_chat_ids(user["user_id"]) do
       Enum.reduce_while(chats, {:ok, []}, fn chat, {:ok, acc} ->
         case public_chat(chat) do
-          {:ok, row} -> {:cont, {:ok, [row | acc]}}
-          error -> {:halt, error}
+          # Lets the sidebar show which chats are still working on a request.
+          {:ok, row} ->
+            {:cont,
+             {:ok, [Map.put(row, "working", MapSet.member?(working, row["chat_id"])) | acc]}}
+
+          error ->
+            {:halt, error}
         end
       end)
       |> case do

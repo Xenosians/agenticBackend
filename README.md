@@ -122,7 +122,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 
 ## Current boundaries
 
-- The queue worker tracks one in-flight job per process; this is not a complete distributed worker platform.
+- The queue worker keeps up to `QUEUE_WORKER_MAX_PARALLEL_JOBS` jobs in flight (1 by default, at most 2), one per chat, so a chat's turns stay in order. It is one process, not a distributed worker platform.
 - WebSocket updates are notifications; authenticated REST reads and durable storage remain authoritative. Unknown execution outcomes require reconciliation instead of automatic mutation retries.
 - Ownership/session checks are implemented; broad enterprise RBAC/ABAC remains incomplete.
 - Model and dataset extensions are implemented in the AI service. They do not replace SurrealDB or grant new tool authority.

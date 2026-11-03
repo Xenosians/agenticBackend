@@ -202,6 +202,46 @@ defmodule ItsmBackendWeb.ChatSettingsTest do
     assert untouched["pinned"] == false
   end
 
+  test "the chat list marks only chats whose own job is still running", %{
+    owner: owner,
+    other: other
+  } do
+    {:ok, busy} = Chats.create(owner.user, %{"title" => "Running"})
+    {:ok, done} = Chats.create(owner.user, %{"title" => "Finished"})
+    {:ok, foreign} = Chats.create(other.user, %{"title" => "Someone else's"})
+
+    {:ok, _} =
+      Jobs.create(%{
+        user_id: owner.user["user_id"],
+        conversation_id: busy["chat_id"],
+        message: "Work"
+      })
+
+    {:ok, finished} =
+      Jobs.create(%{
+        user_id: owner.user["user_id"],
+        conversation_id: done["chat_id"],
+        message: "Done"
+      })
+
+    assert {:ok, _} = ItsmBackend.Jobs.SurrealStore.update(%{finished | status: "completed"})
+
+    {:ok, _} =
+      Jobs.create(%{
+        user_id: other.user["user_id"],
+        conversation_id: foreign["chat_id"],
+        message: "Work"
+      })
+
+    rows = conn_for(owner) |> get("/api/v1/chats") |> json_response(200) |> Map.fetch!("chats")
+    working = Map.new(rows, &{&1["chat_id"], &1["working"]})
+
+    assert working[busy["chat_id"]] == true
+    assert working[done["chat_id"]] == false
+    assert working[owner.chat["chat_id"]] == false
+    refute Map.has_key?(working, foreign["chat_id"])
+  end
+
   defp submit!(identity, chat_id, message) do
     conn_for(identity)
     |> post("/api/v1/jobs", %{"chat_id" => chat_id, "message" => message})

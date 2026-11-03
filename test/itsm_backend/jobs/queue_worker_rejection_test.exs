@@ -80,7 +80,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
           worker = start_worker!()
           assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
           assert id == job.id
-          assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+          assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
           assert {:ok, failed} = Jobs.get(job.id)
           assert failed.status == "failed"
           assert failed.error =~ "ai_request_rejected"
@@ -112,7 +112,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
     assert id == job.id
     assert_receive {:storage_fault, :http_500}, 2_000
 
-    assert %{inflight_job_id: nil, undispatched_failure: %Job{} = claim} =
+    assert %{inflight_job_ids: [], undispatched_failure: %Job{} = claim} =
              :sys.get_state(worker)
 
     assert claim.id == job.id
@@ -123,7 +123,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
     assert processing.lease_expires_at == claim.lease_expires_at
     restore.()
     send(worker, :tick)
-    assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+    assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
     refute_receive {:rejected_dispatch, ^id, _, _}
     assert {:ok, failed} = Jobs.get(job.id)
     assert failed.status == "failed"
@@ -142,13 +142,13 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
           worker = start_worker!()
           assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
           assert id == job.id
-          assert %{inflight_job_id: ^id, undispatched_failure: nil} = :sys.get_state(worker)
+          assert %{inflight_job_ids: [^id], undispatched_failure: nil} = :sys.get_state(worker)
           assert {:ok, processing} = Jobs.get(id)
           assert processing.status == "processing"
           assert processing.error == nil
           assert workflow_binding(processing) == binding
           send(worker, :tick)
-          assert %{inflight_job_id: ^id} = :sys.get_state(worker)
+          assert %{inflight_job_ids: [^id]} = :sys.get_state(worker)
           refute_receive {:rejected_dispatch, ^id, _, _}
           assert {:ok, unchanged} = Jobs.get(id)
           assert unchanged == processing
@@ -158,7 +158,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
                    SurrealStore.update(%{processing | lease_expires_at: ~U[2000-01-01 00:00:00Z]})
 
           send(worker, :tick)
-          assert %{inflight_job_id: nil} = :sys.get_state(worker)
+          assert %{inflight_job_ids: []} = :sys.get_state(worker)
           refute_receive {:rejected_dispatch, ^id, _, _}
           assert {:ok, unresolved} = Jobs.get(id)
           assert unresolved.status == "outcome_unknown"
@@ -177,7 +177,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
     worker = start_worker!()
     assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
     assert id == job.id
-    assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+    assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
     assert {:ok, pending} = Jobs.get(id)
     assert pending.status == "pending"
     assert pending.attempts == 1
@@ -221,7 +221,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
         worker = start_worker!()
         assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
         assert id == job.id
-        assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+        assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
         assert {:ok, pending} = Jobs.get(id)
         assert pending.status == "pending"
         assert pending.attempts == 1
@@ -269,7 +269,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
         worker = start_worker!()
         assert_receive {:rejected_dispatch, id, 1, ^binding}, 2_000
         assert id == job.id
-        assert %{inflight_job_id: ^id, undispatched_failure: nil} = :sys.get_state(worker)
+        assert %{inflight_job_ids: [^id], undispatched_failure: nil} = :sys.get_state(worker)
         assert {:ok, processing} = Jobs.get(id)
         assert processing.status == "processing"
         assert processing.error == nil
@@ -286,7 +286,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRejectionTest do
                  SurrealStore.update(%{processing | lease_expires_at: ~U[2000-01-01 00:00:00Z]})
 
         send(worker, :tick)
-        assert %{inflight_job_id: nil} = :sys.get_state(worker)
+        assert %{inflight_job_ids: []} = :sys.get_state(worker)
         refute_receive {:rejected_dispatch, ^id, _, _}
         assert {:ok, unresolved} = Jobs.get(id)
         assert unresolved.status == "outcome_unknown"

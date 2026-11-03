@@ -159,14 +159,26 @@ end
 
 # ------------------------------------------------------------
 # Durable queue worker
+#
+# QUEUE_WORKER_MAX_PARALLEL_JOBS is optional (1 or 2). Without it the
+# worker keeps one job in flight; with 2, a second chat runs while the
+# first one works. One chat's turns always run in order.
 # ------------------------------------------------------------
+
+queue_worker_parallel_jobs =
+  case System.get_env("QUEUE_WORKER_MAX_PARALLEL_JOBS") do
+    nil -> []
+    value -> [max_parallel_jobs: value]
+  end
 
 if config_env() == :prod do
   config :itsm_backend,
          :queue_worker,
-         enabled: required_env.("QUEUE_WORKER_ENABLED"),
-         poll_interval_ms: required_env.("QUEUE_WORKER_POLL_INTERVAL_MS"),
-         lease_seconds: required_env.("QUEUE_WORKER_LEASE_SECONDS")
+         [
+           enabled: required_env.("QUEUE_WORKER_ENABLED"),
+           poll_interval_ms: required_env.("QUEUE_WORKER_POLL_INTERVAL_MS"),
+           lease_seconds: required_env.("QUEUE_WORKER_LEASE_SECONDS")
+         ] ++ queue_worker_parallel_jobs
 else
   queue_worker_overrides =
     [
@@ -177,6 +189,7 @@ else
     |> Enum.reject(fn {_key, value} ->
       is_nil(value)
     end)
+    |> Kernel.++(queue_worker_parallel_jobs)
 
   if queue_worker_overrides != [] do
     config :itsm_backend,

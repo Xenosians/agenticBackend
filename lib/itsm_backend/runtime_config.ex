@@ -228,8 +228,30 @@ defmodule ItsmBackend.RuntimeConfig do
           config,
           :lease_seconds,
           :queue_worker
-        )
+        ),
+      max_parallel_jobs: fetch_parallel_job_limit!(config)
     }
+  end
+
+  # Jobs share one AI service and, for local models, one GPU, so the limit
+  # stays small: 1 runs jobs one after another, 2 lets a second chat proceed.
+  @max_parallel_jobs 2
+
+  defp fetch_parallel_job_limit!(config) do
+    limit =
+      if Keyword.has_key?(config, :max_parallel_jobs),
+        do: fetch_positive_integer!(config, :max_parallel_jobs, :queue_worker),
+        else: 1
+
+    if limit > @max_parallel_jobs do
+      raise Error,
+        message:
+          "expected " <>
+            inspect_config_path(:queue_worker, :max_parallel_jobs) <>
+            " to be at most #{@max_parallel_jobs}, got: " <> inspect(limit)
+    end
+
+    limit
   end
 
   # ------------------------------------------------------------

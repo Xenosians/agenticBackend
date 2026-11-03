@@ -15,6 +15,10 @@ defmodule ItsmBackend.Jobs.SurrealStore do
 
   # ------------------------------------------------------------
   # Pending work discovery
+  #
+  # A chat runs one turn at a time, so its next turn becomes
+  # claimable only when the running one leaves processing. The
+  # claim below applies the same rule atomically.
   # ------------------------------------------------------------
 
   @spec pending?() ::
@@ -26,6 +30,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     SELECT id
     FROM job
     WHERE status = "pending"
+      AND conversation_id NOTINSIDE (
+        SELECT VALUE conversation_id
+        FROM job
+        WHERE status = "processing"
+          AND type::is_string(conversation_id)
+      )
     LIMIT 1;
     """
 
@@ -83,6 +93,12 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       SELECT id, created_at
       FROM job
       WHERE status = "pending"
+        AND conversation_id NOTINSIDE (
+          SELECT VALUE conversation_id
+          FROM job
+          WHERE status = "processing"
+            AND type::is_string(conversation_id)
+        )
       ORDER BY created_at ASC
       LIMIT 1
     )

@@ -152,7 +152,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerRestartRecoveryTest do
     #
     # This worker starts with:
     #
-    #   inflight_job_id: nil
+    #   inflight_job_ids: []
     #
     start_supervised!({
       QueueWorker,

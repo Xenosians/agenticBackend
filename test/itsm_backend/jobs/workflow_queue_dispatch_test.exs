@@ -67,7 +67,7 @@ defmodule ItsmBackend.Jobs.WorkflowQueueDispatchTest do
     assert failed.lease_expires_at == nil
     assert failed.workflow_contract == job.workflow_contract
     assert failed.workflow_contract_hash == job.workflow_contract_hash
-    assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+    assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
     refute_dispatch!(job)
   end
 
@@ -77,7 +77,7 @@ defmodule ItsmBackend.Jobs.WorkflowQueueDispatchTest do
     worker = start_worker!()
     assert_receive {:storage_fault, :http_500}, 2_000
 
-    assert %{inflight_job_id: nil, undispatched_failure: %Job{id: id, attempts: 1}} =
+    assert %{inflight_job_ids: [], undispatched_failure: %Job{id: id, attempts: 1}} =
              :sys.get_state(worker)
 
     assert id == job.id
@@ -85,7 +85,7 @@ defmodule ItsmBackend.Jobs.WorkflowQueueDispatchTest do
     assert processing.status == "processing"
     restore.()
     send(worker, :tick)
-    assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+    assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
     failed = await_failed!(job.id)
     assert failed.attempts == 1
     assert failed.workflow_contract_hash == job.workflow_contract_hash
@@ -108,7 +108,7 @@ defmodule ItsmBackend.Jobs.WorkflowQueueDispatchTest do
 
     assert {:ok, _} = SurrealStore.update(renewed)
     send(worker, :tick)
-    assert %{inflight_job_id: nil, undispatched_failure: nil} = :sys.get_state(worker)
+    assert %{inflight_job_ids: [], undispatched_failure: nil} = :sys.get_state(worker)
     assert {:ok, unchanged} = Jobs.get(job.id)
     assert unchanged.status == "processing"
     assert unchanged.attempts == 1

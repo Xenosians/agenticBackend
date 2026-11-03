@@ -54,7 +54,8 @@ defmodule ItsmBackend.Application do
           ItsmBackend.Jobs.QueueWorker,
           [
             poll_interval_ms: config.poll_interval_ms,
-            lease_seconds: config.lease_seconds
+            lease_seconds: config.lease_seconds,
+            max_parallel_jobs: config.max_parallel_jobs
           ]
         }
       ]
