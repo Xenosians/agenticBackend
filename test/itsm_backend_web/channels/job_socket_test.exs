@@ -212,6 +212,49 @@ defmodule ItsmBackendWeb.JobSocketTest do
     assert {:ok, %{status: "processing", result: nil}} = Jobs.get(ctx.job.id)
   end
 
+  test "AI answer text reaches the job's viewer as a numbered preview and is never stored", ctx do
+    {:ok, processing} = Job.claim(ctx.job, 300)
+    {:ok, _} = Jobs.update(processing)
+
+    {:ok, _reply, _viewer} =
+      subscribe_and_join(user_socket(ctx.identity), JobChannel, "job:#{ctx.job.id}")
+
+    {:ok, _reply, ai} =
+      subscribe_and_join(internal_socket(), JobProgressChannel, "ai_jobs:#{ctx.job.id}", %{
+        "attempt" => 1
+      })
+
+    ref = push(ai, "answer_text", %{"sequence" => 1, "text" => "The VPN "})
+    assert_reply ref, :ok, %{accepted: true}
+
+    assert_push "job_answer_text",
+                %{job_id: job_id, attempt: 1, sequence: 1, text: "The VPN "},
+                1_000
+
+    assert job_id == ctx.job.id
+
+    for payload <- [
+          %{"sequence" => 0, "text" => "zero"},
+          %{"sequence" => 2, "text" => ""},
+          %{"sequence" => 2, "text" => 42},
+          %{"sequence" => "2", "text" => "text"},
+          %{"sequence" => 2, "text" => String.duplicate("x", 2049)},
+          %{"sequence" => 2, "text" => "text", "status" => "completed"},
+          %{"text" => "no sequence"}
+        ] do
+      ref = push(ai, "answer_text", payload)
+      assert_reply ref, :error, %{reason: "invalid_request"}
+    end
+
+    refute_push "job_answer_text", _
+    assert {:ok, %{status: "processing", result: nil}} = Jobs.get(ctx.job.id)
+
+    {:ok, _} = Jobs.update(%{processing | status: "completed"})
+    ref = push(ai, "answer_text", %{"sequence" => 2, "text" => "late"})
+    assert_reply ref, :error, %{reason: "inactive_attempt"}
+    refute_push "job_answer_text", _
+  end
+
   test "AI progress rejects pending, stale, expired and completed attempts", ctx do
     topic = "ai_jobs:#{ctx.job.id}"
 

@@ -49,9 +49,31 @@ defmodule ItsmBackendWeb.JobChannel do
   end
 
   def handle_info({:job_progress, job_id, attempt, stage}, %{assigns: %{job_id: job_id}} = socket) do
+    relay_active(socket, job_id, attempt, "job_progress", %{
+      job_id: job_id,
+      attempt: attempt,
+      stage: stage
+    })
+  end
+
+  def handle_info(
+        {:job_answer_text, job_id, attempt, sequence, text},
+        %{assigns: %{job_id: job_id}} = socket
+      ) do
+    relay_active(socket, job_id, attempt, "job_answer_text", %{
+      job_id: job_id,
+      attempt: attempt,
+      sequence: sequence,
+      text: text
+    })
+  end
+
+  # Ephemeral hints reach only the job's owner, and only for the attempt that
+  # is still processing; a stale attempt's hint is dropped.
+  defp relay_active(socket, job_id, attempt, event, payload) do
     with {:ok, _job} <- authorized_job(socket, job_id),
          {:ok, _active_job} <- JobProgressChannel.active_job(job_id, attempt) do
-      push(socket, "job_progress", %{job_id: job_id, attempt: attempt, stage: stage})
+      push(socket, event, payload)
       {:noreply, socket}
     else
       {:error, :inactive_attempt} -> {:noreply, socket}
