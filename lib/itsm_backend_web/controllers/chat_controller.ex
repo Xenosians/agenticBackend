@@ -144,6 +144,12 @@ defmodule ItsmBackendWeb.ChatController do
             |> put_status(:forbidden)
             |> json(%{error: "forbidden"})
 
+          {:error, :chat_has_running_job} ->
+            # Deleting would orphan a queued, running or approval-pending turn.
+            conn
+            |> put_status(:conflict)
+            |> json(%{error: "chat_has_running_job"})
+
           {:error, _} ->
             conn
             |> put_status(:internal_server_error)

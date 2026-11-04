@@ -166,6 +166,8 @@ defmodule ItsmBackend.Surreal.ExactParametersTest do
     assert {:error, :forbidden} = ItsmBackend.Chats.get_authorized(other, chat["id"])
     assert {:ok, history} = ItsmBackend.Chats.history(owner, chat["id"])
     assert Enum.any?(history, &(&1["job_id"] == job.id and &1["content"] == job.message))
+    # A chat with an unfinished turn cannot be deleted, so settle it first.
+    assert {:ok, _} = JobsStore.update(%{job | status: "completed"})
     assert {:ok, archived} = ItsmBackend.Chats.archive(owner, chat["id"])
     assert archived["chat_id"] == chat["chat_id"]
     assert is_binary(archived["archived_at"])

@@ -145,12 +145,23 @@ defmodule ItsmBackend.Chats do
 
   def archive(user, chat_id) do
     with {:ok, chat} <- get_authorized(user, chat_id),
+         :ok <- ensure_no_unfinished_turn(chat),
          {:ok, archived} <- SurrealStore.archive(chat["chat_id"], now()),
          true <- is_map(archived) || {:error, :not_found} do
       {:ok, archived}
     else
       {:error, _} = error -> error
       _ -> {:error, :not_found}
+    end
+  end
+
+  # Deleting a chat would orphan a turn that is queued, running or waiting for
+  # the owner's approval.
+  defp ensure_no_unfinished_turn(chat) do
+    with {:ok, working} <- SurrealStore.working_chat_ids(chat["user_id"]) do
+      if MapSet.member?(working, chat["chat_id"]),
+        do: {:error, :chat_has_running_job},
+        else: :ok
     end
   end
 

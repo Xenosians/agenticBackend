@@ -173,13 +173,15 @@ defmodule ItsmBackendWeb.ChatSettingsTest do
     assert titled["title"] == "First saved request"
     {:ok, archived} = Chats.create(owner.user)
 
-    {:ok, _} =
+    {:ok, earlier} =
       Jobs.create(%{
         user_id: owner.user["user_id"],
         conversation_id: archived["chat_id"],
         message: "Not a live thread"
       })
 
+    # A chat with an unfinished turn cannot be deleted, so settle it first.
+    assert {:ok, _} = ItsmBackend.Jobs.SurrealStore.update(%{earlier | status: "completed"})
     {:ok, _} = Chats.archive(owner.user, archived["chat_id"])
     assert :ok = Chats.title_from_first_request(owner.user["user_id"], archived["chat_id"])
     assert {:ok, unchanged} = Chats.get_authorized(owner.user, archived["chat_id"])
@@ -240,6 +242,35 @@ defmodule ItsmBackendWeb.ChatSettingsTest do
     assert working[done["chat_id"]] == false
     assert working[owner.chat["chat_id"]] == false
     refute Map.has_key?(working, foreign["chat_id"])
+  end
+
+  test "a chat cannot be deleted while one of its turns is unfinished", %{owner: owner} do
+    {:ok, chat} = Chats.create(owner.user, %{"title" => "Busy"})
+    path = "/api/v1/chats/#{chat["chat_id"]}"
+
+    {:ok, job} =
+      Jobs.create(%{
+        user_id: owner.user["user_id"],
+        conversation_id: chat["chat_id"],
+        message: "Work"
+      })
+
+    for status <- ["pending", "processing", "waiting_approval"] do
+      assert {:ok, _} = ItsmBackend.Jobs.SurrealStore.update(%{job | status: status})
+
+      assert conn_for(owner) |> delete(path) |> json_response(409) == %{
+               "error" => "chat_has_running_job"
+             }
+
+      assert {:ok, %{"archived_at" => nil}} = Chats.get_authorized(owner.user, chat["chat_id"])
+    end
+
+    assert {:ok, _} = ItsmBackend.Jobs.SurrealStore.update(%{job | status: "completed"})
+
+    assert conn_for(owner) |> delete(path) |> json_response(200) == %{
+             "chat_id" => chat["chat_id"],
+             "deleted" => true
+           }
   end
 
   defp submit!(identity, chat_id, message) do

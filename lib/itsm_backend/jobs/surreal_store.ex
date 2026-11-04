@@ -13,12 +13,15 @@ defmodule ItsmBackend.Jobs.SurrealStore do
 
   @table "job"
 
+  # A chat runs one turn at a time: its next turn becomes claimable only when
+  # no earlier turn of that chat is running or waiting for the owner's
+  # approval. An open approval must be decided first, so the next turn
+  # cannot overtake it with stale context. Both queries below apply the rule;
+  # the claim applies it atomically.
+  @busy_chat_statuses ~s(["processing", "waiting_approval"])
+
   # ------------------------------------------------------------
   # Pending work discovery
-  #
-  # A chat runs one turn at a time, so its next turn becomes
-  # claimable only when the running one leaves processing. The
-  # claim below applies the same rule atomically.
   # ------------------------------------------------------------
 
   @spec pending?() ::
@@ -33,7 +36,7 @@ defmodule ItsmBackend.Jobs.SurrealStore do
       AND conversation_id NOTINSIDE (
         SELECT VALUE conversation_id
         FROM job
-        WHERE status = "processing"
+        WHERE status INSIDE #{@busy_chat_statuses}
           AND type::is_string(conversation_id)
       )
     LIMIT 1;
@@ -96,7 +99,7 @@ defmodule ItsmBackend.Jobs.SurrealStore do
         AND conversation_id NOTINSIDE (
           SELECT VALUE conversation_id
           FROM job
-          WHERE status = "processing"
+          WHERE status INSIDE #{@busy_chat_statuses}
             AND type::is_string(conversation_id)
         )
       ORDER BY created_at ASC

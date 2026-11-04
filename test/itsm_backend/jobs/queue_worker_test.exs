@@ -319,6 +319,42 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
     retire!(turn_two.id, two_attempt)
   end
 
+  test "a chat's next turn waits while its earlier turn waits for approval" do
+    start_idle_worker!(max_parallel_jobs: 2)
+    chat_id = new_chat_id()
+
+    turn_one = create_job!(chat_id, "Create a ticket for the VPN outage.")
+    one_attempt = assert_dispatched!(turn_one)
+
+    assert {:ok, _waiting, :applied} =
+             Jobs.apply_completion(turn_one.id, one_attempt, "waiting_approval", %{
+               "result" => %{"answer" => "Approve the ticket?"}
+             })
+
+    # The approval is still open, so the chat's next turn must not overtake it:
+    # it would answer without the decision and could act on stale context.
+    turn_two = create_job!(chat_id, "Also tell me the router uptime.")
+    refute_receive {:ai_dispatch, _, _, _, _}, 200
+
+    other = create_job!(new_chat_id(), "Check the router.")
+    other_attempt = assert_dispatched!(other)
+
+    # Once the decision settles the earlier turn, the next turn runs.
+    assert {:ok, %Job{status: "denied"}} =
+             Jobs.get(turn_one.id) |> then(fn {:ok, job} -> deny!(job) end)
+
+    two_attempt = assert_dispatched!(turn_two)
+
+    retire!(other.id, other_attempt)
+    retire!(turn_two.id, two_attempt)
+  end
+
+  defp deny!(%Job{} = job) do
+    {:ok, denied} = ItsmBackend.Jobs.SurrealStore.update(%{job | status: "denied"})
+    send(QueueWorker, :job_queue_changed)
+    {:ok, denied}
+  end
+
   defp create_job!(chat_id, message) do
     {:ok, job} =
       Jobs.create(%{
