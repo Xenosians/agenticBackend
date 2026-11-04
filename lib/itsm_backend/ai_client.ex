@@ -94,6 +94,22 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  # Asks the AI to stop one running attempt. Phoenix has already recorded the
+  # cancel, so a failed request never undoes it; the attempt's lease ends.
+  @callback cancel_job(job_id :: String.t(), attempt :: pos_integer()) ::
+              {:ok, map()}
+              | {:error, term()}
+
+  @optional_callbacks cancel_job: 2
+
+  @doc "Asks the AI to stop a cancelled attempt, when the client supports it."
+  @spec stop_job(module(), String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}
+  def stop_job(client, job_id, attempt) do
+    if function_exported?(client, :cancel_job, 2),
+      do: client.cancel_job(job_id, attempt),
+      else: {:error, {:ai_client_missing_cancel_callback, client}}
+  end
+
   @spec dispatch_job(
           module(),
           String.t(),

@@ -3,7 +3,7 @@ defmodule ItsmBackend.Jobs.Operations do
   alias ItsmBackend.Jobs
   alias ItsmBackend.Jobs.{InferenceMetric, Job, OperationsStore}
 
-  @terminal ~w(completed failed denied outcome_unknown reconciliation_required)
+  @terminal ~w(completed failed denied outcome_unknown reconciliation_required cancelled)
 
   def record(job_id, params) do
     with true <- InferenceMetric.valid_id?(job_id) || {:error, :invalid_metric},

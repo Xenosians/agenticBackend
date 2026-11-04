@@ -20,7 +20,8 @@ defmodule ItsmBackend.Jobs do
     "outcome_unknown",
     "completed",
     "failed",
-    "reconciliation_required"
+    "reconciliation_required",
+    "cancelled"
   ]
 
   # ------------------------------------------------------------
@@ -309,6 +310,51 @@ defmodule ItsmBackend.Jobs do
     )
     |> Events.after_write()
   end
+
+  # ------------------------------------------------------------
+  # Owner cancel
+  # ------------------------------------------------------------
+
+  @doc """
+  Cancels a queued or running request for its owner.
+
+  A queued request never starts. A running request stops being the chat's
+  current turn at once; its late completion is acknowledged and dropped.
+  A request waiting for approval is decided by approve or reject instead,
+  and a finished request keeps its outcome. The store applies the change
+  only while the job is still in the status that was read, so a completion
+  that lands first wins.
+  """
+  @spec cancel(Job.t()) ::
+          {:ok, Job.t(), :pending | :processing}
+          | {:error, {:job_waiting_approval | :job_already_finished, String.t()} | term()}
+  def cancel(%Job{status: status} = job) when status in ["pending", "processing"] do
+    message =
+      if status == "pending",
+        do: "Cancelled before it started.",
+        else: "Cancelled while it was running. Nothing it had not finished will run."
+
+    with {:ok, cancelled} <- Job.transition(Job.put_error(job, message), "cancelled") do
+      case SurrealStore.cancel_if_current(cancelled, status) do
+        {:ok, nil} ->
+          # It moved on meanwhile; report what it is now.
+          with {:ok, current} <- get(job.id), do: cancel(current)
+
+        {:ok, stored} ->
+          Events.after_write({:ok, stored})
+          Events.wake_queue()
+          {:ok, stored, String.to_existing_atom(status)}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  def cancel(%Job{status: "waiting_approval"}),
+    do: {:error, {:job_waiting_approval, "waiting_approval"}}
+
+  def cancel(%Job{status: status}), do: {:error, {:job_already_finished, status}}
 
   # ------------------------------------------------------------
   # AI completion callback

@@ -16,7 +16,8 @@ defmodule ItsmBackend.Jobs.Job do
     "denied",
     "outcome_unknown",
     "completed",
-    "failed"
+    "failed",
+    "cancelled"
   ]
 
   @terminal_statuses [
@@ -24,7 +25,8 @@ defmodule ItsmBackend.Jobs.Job do
     "failed",
     "reconciliation_required",
     "denied",
-    "outcome_unknown"
+    "outcome_unknown",
+    "cancelled"
   ]
 
   @enforce_keys [
@@ -308,6 +310,12 @@ defmodule ItsmBackend.Jobs.Job do
   defp allowed_transition?(current, next)
        when current in ["processing", "waiting_approval"] and
               next in ["denied", "outcome_unknown"],
+       do: true
+
+  # The owner stops a request that is queued or running. A request waiting
+  # for approval is decided by approve or reject instead.
+  defp allowed_transition?(current, "cancelled")
+       when current in ["pending", "processing"],
        do: true
 
   defp allowed_transition?(

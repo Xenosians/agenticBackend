@@ -88,6 +88,11 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
+  def cancel_job(job_id, attempt) do
+    {:ok, %{"job_id" => job_id, "attempt" => attempt, "status" => "stopping"}}
+  end
+
+  @impl true
   def integrations do
     # Shape of the AI service's provider setup readiness (configuration only).
     {:ok,

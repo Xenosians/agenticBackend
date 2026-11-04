@@ -187,6 +187,30 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   # ------------------------------------------------------------
+  # Cancel
+  #
+  # One bounded attempt: Phoenix has already recorded the cancel, and the
+  # attempt's lease ends either way.
+  # ------------------------------------------------------------
+
+  @impl true
+  def cancel_job(job_id, attempt) do
+    config = RuntimeConfig.ai_service!()
+
+    case Req.post(
+           "#{config.base_url}/v1/jobs/#{URI.encode_www_form(job_id)}/cancel",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           json: %{attempt: attempt},
+           receive_timeout: config.health_timeout_ms,
+           retry: false
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
+      {:ok, %{status: status, body: body}} -> {:error, {:ai_service_error, status, body}}
+      {:error, reason} -> {:error, {:request_failed, reason}}
+    end
+  end
+
+  # ------------------------------------------------------------
   # Integration status
   #
   # Status probes (integrations, health, readiness) make one bounded

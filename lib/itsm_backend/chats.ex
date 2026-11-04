@@ -472,7 +472,13 @@ defmodule ItsmBackend.Chats do
   defp short_text?(value, limit), do: value != "" and String.length(value) <= limit
 
   defp assistant_content(%{status: status, error: error})
-       when status in ["failed", "denied", "outcome_unknown", "reconciliation_required"] and
+       when status in [
+              "failed",
+              "denied",
+              "outcome_unknown",
+              "reconciliation_required",
+              "cancelled"
+            ] and
               is_binary(error),
        do: error
 

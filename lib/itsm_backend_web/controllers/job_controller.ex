@@ -10,6 +10,7 @@ defmodule ItsmBackendWeb.JobController do
   request_contract(:show, [])
   request_contract(:approve, [])
   request_contract(:reject, [])
+  request_contract(:cancel, [])
 
   require Logger
 
@@ -176,6 +177,57 @@ defmodule ItsmBackendWeb.JobController do
 
   def reject(conn, %{"id" => job_id}) do
     decide_approval(conn, job_id, :reject)
+  end
+
+  # The owner stops a queued or running request. A running attempt is told to
+  # stop; its late completion is acknowledged and dropped (Jobs.cancel/1).
+  def cancel(conn, %{"id" => job_id}) do
+    case AuthRequest.require_authenticated(conn, csrf: true) do
+      {:ok, conn, ctx} -> cancel_authenticated(conn, ctx.user, job_id)
+      {:error, conn} -> conn
+    end
+  end
+
+  defp cancel_authenticated(conn, user, job_id) do
+    with {:ok, job} <- Jobs.get(job_id),
+         true <- Authorization.owns_resource?(user, job.user_id) || {:error, :forbidden},
+         {:ok, cancelled, previous} <- Jobs.cancel(job),
+         {:ok, response} <- PublicContract.build_job_response(cancelled, wire_version(conn)) do
+      if previous == :processing, do: stop_running_attempt(cancelled)
+      json(conn, response)
+    else
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "job_not_found"})
+
+      {:error, :forbidden} ->
+        conn |> put_status(:forbidden) |> json(%{error: "forbidden"})
+
+      {:error, {code, status}} when code in [:job_waiting_approval, :job_already_finished] ->
+        conn |> put_status(:conflict) |> json(%{error: Atom.to_string(code), status: status})
+
+      {:error, reason} ->
+        Logger.error("job cancel failed: #{inspect(reason)}")
+
+        PublicError.render(
+          conn,
+          :internal_server_error,
+          "job_cancel_failed",
+          "The request could not be cancelled. Check its status before trying again.",
+          retryable: true
+        )
+    end
+  end
+
+  # Best effort: the cancel is already saved, and without lease renewals the
+  # attempt cannot complete. The AI stops its task when it hears this.
+  defp stop_running_attempt(%Job{} = job) do
+    case ItsmBackend.AIClient.stop_job(RuntimeConfig.ai_client!(), job.id, job.attempts) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("AI stop request failed job_id=#{job.id}: #{inspect(reason)}")
+    end
   end
 
   defp decide_approval(conn, job_id, decision) do

@@ -107,6 +107,7 @@ defmodule ItsmBackendWeb.Router do
     post "/v2/jobs/socket-token", SocketTokenController, :create
     post "/v2/jobs/:id/approve", JobController, :approve
     post "/v2/jobs/:id/reject", JobController, :reject
+    post "/v2/jobs/:id/cancel", JobController, :cancel
 
     # ----------------------------------------------------------
     # Internal AI -> Phoenix durable-job protocol

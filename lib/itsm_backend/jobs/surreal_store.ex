@@ -641,6 +641,43 @@ defmodule ItsmBackend.Jobs.SurrealStore do
     end
   end
 
+  @doc """
+  Atomically cancels the job only while it is still in `expected_status` with
+  the same attempt, so a completion or claim that lands first wins. Returns
+  `{:ok, nil}` when the job had already moved on.
+  """
+  def cancel_if_current(%Job{} = cancelled, expected_status)
+      when expected_status in ["pending", "processing"] do
+    statement = """
+    UPDATE type::record($table, $id)
+    SET status = "cancelled", error = $error, completed_at = $completed_at,
+      lease_expires_at = $cleared_lease
+    WHERE status = $expected_status AND attempts = $attempts
+    RETURN AFTER;
+    """
+
+    params = %{
+      "table" => @table,
+      "id" => cancelled.id,
+      "error" => cancelled.error,
+      "completed_at" => encode_datetime(cancelled.completed_at),
+      "expected_status" => expected_status,
+      "attempts" => cancelled.attempts,
+      "cleared_lease" => nil
+    }
+
+    with {:ok, response} <- Surreal.query(statement, params),
+         {:ok, result} <- extract_result(response) do
+      case result do
+        nil -> {:ok, nil}
+        [] -> {:ok, nil}
+        [record] -> deserialize(record)
+        record when is_map(record) -> deserialize(record)
+        _ -> {:error, :invalid_cancel_store_response}
+      end
+    end
+  end
+
   @doc "Atomically stores completion only while the original attempt is processing."
   def complete_if_processing(%Job{} = job) do
     statement = """

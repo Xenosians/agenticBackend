@@ -145,6 +145,10 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
   # ============================================================
 
   test "ambiguous dispatch fails closed after processing lease expires" do
+    # Only this test's job may be dispatched with a one-second lease, so no
+    # row left pending by another test turns into an expired lease later.
+    drain_pending!()
+
     {:ok, created_job} =
       Jobs.create(%{
         user_id: "queue-worker-test",
@@ -174,6 +178,7 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
                    2_000
 
     assert is_binary(dispatched_job_id)
+    assert dispatched_job_id == created_job.id
 
     assert attempt >= 1
 

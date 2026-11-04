@@ -22,7 +22,8 @@
         "completed",
         "failed",
         "denied",
-        "outcome_unknown"
+        "outcome_unknown",
+        "cancelled"
       ],
       "description": "New jobs begin pending. A recovered submission reports its existing state without resetting execution."
     },
