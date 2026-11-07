@@ -9,6 +9,9 @@ defmodule ItsmBackend.ContractsTest do
   @schemas %{
     error: "common/error.schema.json",
     tool_proposal: "common/tool-proposal.schema.json",
+    extension_manifest: "extensions/manifest.schema.json",
+    extension_invocation: "extensions/invocation.schema.json",
+    extension_result: "extensions/result.schema.json",
     job_create_request: "public/job-create-request.schema.json",
     job_create_response: "public/job-create-response.schema.json",
     job_response: "public/job-response.schema.json",
@@ -56,6 +59,80 @@ defmodule ItsmBackend.ContractsTest do
                  |> load_schema()
                  |> JSONSchex.compile()
       end
+    )
+  end
+
+  test "the declared Lua row transform manifest validates against v1" do
+    manifest =
+      @contracts_root
+      |> Path.join("extensions/lua-row-transform.manifest.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert_valid(:extension_manifest, manifest)
+
+    refute_valid(
+      :extension_manifest,
+      Map.put(manifest, "contract_version", 2)
+    )
+  end
+
+  test "extension invocations bind bounded input to a declared version" do
+    assert_valid(
+      :extension_invocation,
+      %{
+        "schema" => "extension-invocation.v1",
+        "contract_version" => 1,
+        "extension_id" => "lua-row-transform",
+        "extension_version" => "1.0.0",
+        "input" => %{
+          "script" => "return function(row) return row end",
+          "rows" => [%{"ticket" => "SUP-12"}]
+        }
+      }
+    )
+
+    refute_valid(
+      :extension_invocation,
+      %{
+        "schema" => "extension-invocation.v1",
+        "contract_version" => 1,
+        "extension_id" => "lua-row-transform",
+        "extension_version" => "1.0.0",
+        "input" => %{"script" => "return function(row) return row end", "rows" => []},
+        "owner" => "forged-owner"
+      }
+    )
+  end
+
+  test "extension results require typed rows and a matching version envelope" do
+    assert_valid(
+      :extension_result,
+      %{
+        "schema" => "extension-result.v1",
+        "contract_version" => 1,
+        "extension_id" => "lua-row-transform",
+        "extension_version" => "1.0.0",
+        "result" => %{
+          "schema" => "lua-row-transform.v1",
+          "rows" => [%{"ticket" => "SUP-12"}],
+          "input_rows" => 1,
+          "output_rows" => 1,
+          "elapsed_ms" => 2,
+          "isolation" => ["process", "no_new_privileges"]
+        }
+      }
+    )
+
+    refute_valid(
+      :extension_result,
+      %{
+        "schema" => "extension-result.v1",
+        "contract_version" => 1,
+        "extension_id" => "lua-row-transform",
+        "extension_version" => "1.0.0",
+        "result" => %{"schema" => "lua-row-transform.v1", "rows" => ["not-an-object"]}
+      }
     )
   end
 

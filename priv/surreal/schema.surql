@@ -16,6 +16,8 @@ DEFINE TABLE IF NOT EXISTS workflow TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS workflow_run TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS topology TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS submission_intent TYPE ANY SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS extension_record TYPE ANY SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS extension_event TYPE ANY SCHEMALESS PERMISSIONS NONE;
 
 DEFINE INDEX IF NOT EXISTS auth_identity_user_id ON auth_identity FIELDS user_id UNIQUE;
 DEFINE INDEX IF NOT EXISTS auth_session_token_hash ON auth_session FIELDS token_hash UNIQUE;
@@ -30,3 +32,6 @@ DEFINE INDEX IF NOT EXISTS mail_outbox_status_next_attempt ON mail_outbox FIELDS
 DEFINE INDEX IF NOT EXISTS provisioned_mailbox_provider_email ON provisioned_mailbox FIELDS provider, email UNIQUE;
 DEFINE INDEX IF NOT EXISTS workflow_owner_updated ON workflow FIELDS user_id, updated_at;
 DEFINE INDEX IF NOT EXISTS topology_owner_updated ON topology FIELDS user_id, updated_at;
+DEFINE INDEX IF NOT EXISTS extension_record_owner_updated ON extension_record FIELDS user_id, updated_at;
+DEFINE INDEX IF NOT EXISTS extension_record_identity ON extension_record FIELDS user_id, kind, extension_id, record_version UNIQUE;
+DEFINE INDEX IF NOT EXISTS extension_event_record_created ON extension_event FIELDS user_id, record_id, created_at;

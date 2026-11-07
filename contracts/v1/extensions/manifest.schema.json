@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:extensions:manifest",
+  "title": "Extension Manifest",
+  "description": "Versioned declaration of an isolated extension's wire schemas and resource ceilings. It grants no authority.",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "contract_version",
+    "input_schema",
+    "output_schema",
+    "limits"
+  ],
+  "properties": {
+    "schema": {"const": "extension-manifest.v1"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "contract_version": {"const": 1},
+    "input_schema": {
+      "const": "urn:agentic-itsm:contracts:v1:extensions:invocation"
+    },
+    "output_schema": {
+      "const": "urn:agentic-itsm:contracts:v1:extensions:result"
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "max_source_bytes",
+        "max_input_bytes",
+        "max_rows",
+        "max_output_bytes",
+        "max_instructions",
+        "max_memory_bytes",
+        "max_cpu_seconds",
+        "max_address_space_bytes",
+        "max_wall_seconds"
+      ],
+      "properties": {
+        "max_source_bytes": {"type": "integer", "minimum": 1, "maximum": 20000},
+        "max_input_bytes": {"type": "integer", "minimum": 1, "maximum": 2000000},
+        "max_rows": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 2000000},
+        "max_instructions": {"type": "integer", "minimum": 1, "maximum": 20000000},
+        "max_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 67108864},
+        "max_cpu_seconds": {"type": "integer", "minimum": 1, "maximum": 10},
+        "max_address_space_bytes": {"type": "integer", "minimum": 1, "maximum": 805306368},
+        "max_wall_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 20}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

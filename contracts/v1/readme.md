@@ -22,6 +22,13 @@ The contract is immutable under submission replay and approval continuation. See
 the [workflow protocol](../../docs/requested-workflow.md) for semantic limits,
 hash projection and compatibility behavior beyond the JSON Schema structure.
 
+Extension manifest, invocation and result schemas are versioned here under
+`extensions/`. The AI bundles the same files for runtime validation; the
+workspace acceptance test checks that its packaged copy matches these canonical
+Phoenix files. A valid contract describes data shape and resource ceilings only.
+It does not register an extension, grant authority or replace Phoenix ownership,
+the AI tool gateway, Lua isolation or provider receipts.
+
 ## Layout
 
 ```text

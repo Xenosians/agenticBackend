@@ -12,6 +12,9 @@ defmodule ItsmBackend.ContractsRuntimeTest do
              :ai_job_completion_v2,
              :ai_job_execute_request,
              :error,
+             :extension_invocation,
+             :extension_manifest,
+             :extension_result,
              :job_create_request,
              :job_create_response,
              :job_response,
@@ -29,6 +32,21 @@ defmodule ItsmBackend.ContractsRuntimeTest do
                  "message" => "hello"
                }
              )
+  end
+
+  test "validates the canonical Lua transform manifest through the registry" do
+    manifest_path =
+      Path.expand(
+        "../../contracts/v1/extensions/lua-row-transform.manifest.json",
+        __DIR__
+      )
+
+    manifest =
+      manifest_path
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert :ok = Contracts.validate(:extension_manifest, manifest)
   end
 
   test "rejects invalid payload through the registry" do

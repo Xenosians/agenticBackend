@@ -31,6 +31,19 @@ defmodule ItsmBackend.AIClient.HTTPTest do
              )
   end
 
+  test "Proxmox dashboard reads use the internal token and dedicated API path" do
+    Application.put_env(:itsm_backend, :internal_job_token, "test-internal-token")
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/internal/v1/proxmox/overview"
+      assert Plug.Conn.get_req_header(conn, "x-internal-token") == ["test-internal-token"]
+      json_response(conn, 200, %{"ok" => true, "provider" => "proxmox"})
+    end)
+
+    assert {:ok, %{"ok" => true, "provider" => "proxmox"}} = HTTP.proxmox_overview()
+  end
+
   # ------------------------------------------------------------
   # Test configuration + Req transport isolation
   # ------------------------------------------------------------
@@ -44,6 +57,8 @@ defmodule ItsmBackend.AIClient.HTTPTest do
         :itsm_backend,
         :ai_service
       )
+
+    previous_internal_token = Application.get_env(:itsm_backend, :internal_job_token)
 
     Application.put_env(
       :itsm_backend,
@@ -74,6 +89,8 @@ defmodule ItsmBackend.AIClient.HTTPTest do
         :ai_service,
         previous_ai_service
       )
+
+      restore_config(:internal_job_token, previous_internal_token)
     end)
 
     :ok

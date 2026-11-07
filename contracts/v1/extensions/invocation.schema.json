@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-itsm:contracts:v1:extensions:invocation",
+  "title": "Extension Invocation",
+  "description": "Bounded input sent to a declared extension. The declaration and invocation do not grant permissions.",
+  "type": "object",
+  "required": ["schema", "contract_version", "extension_id", "extension_version", "input"],
+  "properties": {
+    "schema": {"const": "extension-invocation.v1"},
+    "contract_version": {"const": 1},
+    "extension_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "extension_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "input": {
+      "type": "object",
+      "required": ["script", "rows"],
+      "properties": {
+        "script": {"type": "string", "minLength": 1, "maxLength": 20000},
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {"type": "object"}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

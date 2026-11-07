@@ -65,6 +65,17 @@ defmodule ItsmBackend.Jobs.QueueWorkerTest do
     end
 
     @impl true
+    def execute_job(
+          job_id,
+          attempt,
+          user_id,
+          message,
+          _context
+        ) do
+      execute_job(job_id, attempt, user_id, message)
+    end
+
+    @impl true
     def run(
           _user_id,
           _message

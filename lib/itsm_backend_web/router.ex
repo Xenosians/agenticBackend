@@ -35,7 +35,17 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/submission-intents/acknowledge", SubmissionIntentController, :acknowledge
     get "/v1/extensions", ExtensionController, :index
     post "/v1/extensions", ExtensionController, :command
+    get "/v1/extensions/records", ExtensionRecordController, :index
+    post "/v1/extensions/records", ExtensionRecordController, :create
+    get "/v1/extensions/records/:id", ExtensionRecordController, :show
+    get "/v1/extensions/records/:id/events", ExtensionRecordController, :events
+    post "/v1/extensions/records/:id/review", ExtensionRecordController, :review
+    post "/v1/extensions/records/:id/activate", ExtensionRecordController, :activate
+    post "/v1/extensions/records/:id/revoke", ExtensionRecordController, :revoke
+    post "/v1/extensions/records/:id/disable", ExtensionRecordController, :disable
+    post "/v1/extensions/records/:id/enable", ExtensionRecordController, :enable
     get "/v1/integrations", IntegrationController, :index
+    get "/v1/proxmox/overview", ProxmoxController, :overview
     get "/v1/learning", LearningController, :index
     post "/v1/learning/preflight", LearningController, :preflight
     get "/v1/learning/runs", LearningController, :runs

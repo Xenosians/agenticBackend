@@ -1,0 +1,19 @@
+{
+  "schema": "extension-manifest.v1",
+  "id": "lua-row-transform",
+  "version": "1.0.0",
+  "contract_version": 1,
+  "input_schema": "urn:agentic-itsm:contracts:v1:extensions:invocation",
+  "output_schema": "urn:agentic-itsm:contracts:v1:extensions:result",
+  "limits": {
+    "max_source_bytes": 20000,
+    "max_input_bytes": 2000000,
+    "max_rows": 10000,
+    "max_output_bytes": 2000000,
+    "max_instructions": 20000000,
+    "max_memory_bytes": 67108864,
+    "max_cpu_seconds": 10,
+    "max_address_space_bytes": 805306368,
+    "max_wall_seconds": 20
+  }
+}

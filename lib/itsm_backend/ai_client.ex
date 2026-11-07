@@ -94,13 +94,17 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  @callback proxmox_overview() ::
+              {:ok, map()}
+              | {:error, term()}
+
   # Asks the AI to stop one running attempt. Phoenix has already recorded the
   # cancel, so a failed request never undoes it; the attempt's lease ends.
   @callback cancel_job(job_id :: String.t(), attempt :: pos_integer()) ::
               {:ok, map()}
               | {:error, term()}
 
-  @optional_callbacks cancel_job: 2
+  @optional_callbacks cancel_job: 2, proxmox_overview: 0
 
   @doc "Asks the AI to stop a cancelled attempt, when the client supports it."
   @spec stop_job(module(), String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}

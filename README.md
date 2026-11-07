@@ -19,6 +19,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Authenticated WebSocket status updates for the browser and bounded progress events from the AI runtime, with REST recovery after reconnect.
 - A durable account → Jira ticket workflow with separately bound approvals, verified provider results, and completion notifications through the existing mail outbox.
 - Authenticated model/harness/dataset commands proxied to the AI service; ownership comes from the session and mutations require CSRF.
+- Authenticated extension catalogs use the signed-in session as the owner boundary; model credentials and machine paths are not returned to the browser.
 - Backend/AI health and integration status endpoints.
 - Local development mail, Brevo HTTPS API or Gmail OAuth2 delivery, plus a durable mail outbox.
 - Encrypted temporary account credentials and versioned JSON contracts between services.
@@ -126,6 +127,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - WebSocket updates are notifications; authenticated REST reads and durable storage remain authoritative. Unknown execution outcomes require reconciliation instead of automatic mutation retries.
 - Ownership/session checks are implemented; broad enterprise RBAC/ABAC remains incomplete.
 - Model and dataset extensions are implemented in the AI service. They do not replace SurrealDB or grant new tool authority.
+- The current Lua plugin view is runtime inventory only. Phoenix does not yet persist owner-authored plugin submissions, review decisions, activation, revocation or plugin audit history.
 - Reference retrieval currently uses local full-text search. n8n/workflow support is manifest validation only, with no runner or webhook registration.
 - User model/dataset selection leaves the networking specialist's existing model and context unchanged.
 - Provider availability and real email delivery depend on deployment configuration. There is no unified deployment command for all three repositories.

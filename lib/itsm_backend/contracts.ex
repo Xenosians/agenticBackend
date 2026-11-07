@@ -18,6 +18,9 @@ defmodule ItsmBackend.Contracts do
     ai_job_completion_ack_v2: "../v2/internal/ai-job-completion-ack.schema.json",
     error: "common/error.schema.json",
     tool_proposal: "common/tool-proposal.schema.json",
+    extension_manifest: "extensions/manifest.schema.json",
+    extension_invocation: "extensions/invocation.schema.json",
+    extension_result: "extensions/result.schema.json",
     job_create_request: "public/job-create-request.schema.json",
     job_create_response: "public/job-create-response.schema.json",
     job_response: "public/job-response.schema.json",
@@ -56,6 +59,9 @@ defmodule ItsmBackend.Contracts do
   @type contract_name ::
           :error
           | :tool_proposal
+          | :extension_manifest
+          | :extension_invocation
+          | :extension_result
           | :job_create_request
           | :job_create_response
           | :job_response

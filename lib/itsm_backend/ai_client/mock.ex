@@ -115,6 +115,11 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
+  def proxmox_overview do
+    {:error, :proxmox_dashboard_unavailable}
+  end
+
+  @impl true
   def health do
     {:ok,
      %{
