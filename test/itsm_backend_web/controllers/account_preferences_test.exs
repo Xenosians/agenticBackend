@@ -7,7 +7,12 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
 
   @preference_write ~r/SET notification_preferences/
   @other_revoke ~r/LET \$revoked = UPDATE auth_session/
-  @defaults %{"task_completed" => true, "theme" => "dark", "accent" => "mono"}
+  @defaults %{
+    "task_completed" => true,
+    "theme" => "dark",
+    "accent" => "mono",
+    "pinned_views" => ["knowledge", "operations"]
+  }
 
   test "preferences default on, persist explicitly, and never update another owner" do
     owner = AuthTestSupport.authenticated_identity!()
@@ -48,13 +53,14 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
              }),
              200
            )["preferences"] == %{
-             "task_completed" => false,
-             "theme" => "light",
-             "accent" => "teal"
+             @defaults
+             | "task_completed" => false,
+               "theme" => "light",
+               "accent" => "teal"
            }
 
     assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200)["preferences"] ==
-             %{"task_completed" => false, "theme" => "light", "accent" => "teal"}
+             %{@defaults | "task_completed" => false, "theme" => "light", "accent" => "teal"}
 
     assert {:ok, @defaults} = Preferences.get(other.user["user_id"])
 
@@ -101,6 +107,66 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
              put(authed(owner), "/api/v1/auth/preferences", %{"theme" => "dark"}),
              503
            )["error"] == "preferences_save_unconfirmed"
+  end
+
+  test "pinned dashboards are saved in the order chosen and keep the other settings" do
+    owner = AuthTestSupport.authenticated_identity!()
+    other = AuthTestSupport.authenticated_identity!()
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{
+               "pinned_views" => ["automation", "knowledge", "topology"]
+             }),
+             200
+           )["preferences"] == %{
+             @defaults
+             | "pinned_views" => ["automation", "knowledge", "topology"]
+           }
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200)["preferences"][
+             "pinned_views"
+           ] == ["automation", "knowledge", "topology"]
+
+    # Nothing pinned is a valid choice, not a missing value.
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"pinned_views" => []}),
+             200
+           )[
+             "preferences"
+           ]["pinned_views"] == []
+
+    assert {:ok, @defaults} = Preferences.get(other.user["user_id"])
+  end
+
+  test "pinned dashboards accept only known dashboards, once each" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    for body <- [
+          %{"pinned_views" => ["settings"]},
+          %{"pinned_views" => ["knowledge", "knowledge"]},
+          %{"pinned_views" => ["Knowledge"]},
+          %{"pinned_views" => "knowledge"},
+          %{"pinned_views" => [1]},
+          %{"pinned_views" => nil},
+          %{"pinned_views" => List.duplicate("knowledge", 9)}
+        ] do
+      assert json_response(put(authed(owner), "/api/v1/auth/preferences", body), 422)
+    end
+
+    assert {:ok, @defaults} = Preferences.get(owner.user["user_id"])
+  end
+
+  test "an unknown stored dashboard pin is unknown, not replaced by a default" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    assert {:ok, _} =
+             Surreal.query(
+               "UPDATE ONLY type::record('app_user', $id) SET notification_preferences.pinned_views = ['nowhere'];",
+               %{"id" => owner.user["user_id"]}
+             )
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 503)["error"] ==
+             "preferences_unavailable"
   end
 
   test "preference reads and writes authenticate, writes require CSRF and strict booleans" do

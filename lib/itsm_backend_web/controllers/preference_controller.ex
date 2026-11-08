@@ -3,7 +3,7 @@ defmodule ItsmBackendWeb.PreferenceController do
   use ItsmBackendWeb.RequestContract
 
   request_contract(:show, [])
-  request_contract(:update, optional_body: ["task_completed", "theme", "accent"])
+  request_contract(:update, optional_body: ["task_completed", "theme", "accent", "pinned_views"])
 
   alias ItsmBackend.Auth.Preferences
   alias ItsmBackendWeb.{AuthRequest, PublicError}
@@ -48,7 +48,7 @@ defmodule ItsmBackendWeb.PreferenceController do
       conn,
       :unprocessable_entity,
       "invalid_preferences",
-      "Send at least one setting: task_completed true or false, theme dark, light or system, or one of the offered accents."
+      "Send at least one setting: task_completed true or false, theme dark, light or system, one of the offered accents, or pinned_views as a list of offered dashboards."
     )
   end
 

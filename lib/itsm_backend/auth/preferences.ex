@@ -1,15 +1,23 @@
 defmodule ItsmBackend.Auth.Preferences do
   @moduledoc """
-  Owner-controlled settings: task completion emails and the workspace
-  appearance (theme and accent). Each value comes from a fixed list, so a
-  stored or submitted value outside it is refused, never defaulted.
+  Owner-controlled settings: task completion emails, the workspace
+  appearance (theme and accent) and the dashboards pinned to the rail.
+  Each value comes from a fixed list, so a stored or submitted value outside
+  it is refused, never defaulted.
   """
 
   alias ItsmBackend.Auth.SurrealStore
 
   @themes ~w(dark light system)
   @accents ~w(mono blue teal green amber rose violet)
-  @defaults %{"task_completed" => true, "theme" => "dark", "accent" => "mono"}
+  # Dashboards an owner may pin to the rail, in the order chosen.
+  @dashboards ~w(automation topology knowledge operations learning)
+  @defaults %{
+    "task_completed" => true,
+    "theme" => "dark",
+    "accent" => "mono",
+    "pinned_views" => ["knowledge", "operations"]
+  }
 
   def get(user_id) do
     with {:ok, user} when is_map(user) <- SurrealStore.get_user(user_id) do
@@ -66,6 +74,12 @@ defmodule ItsmBackend.Auth.Preferences do
   defp valid?("task_completed", value), do: is_boolean(value)
   defp valid?("theme", value), do: value in @themes
   defp valid?("accent", value), do: value in @accents
+
+  defp valid?("pinned_views", value) when is_list(value) do
+    Enum.all?(value, &(&1 in @dashboards)) and length(Enum.uniq(value)) == length(value)
+  end
+
+  defp valid?("pinned_views", _value), do: false
 
   # A write is confirmed only when the saved settings read back as requested.
   defp confirm({:ok, preferences} = saved, changes) do
