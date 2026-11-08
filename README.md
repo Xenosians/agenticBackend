@@ -13,6 +13,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Optional reviewed workflow contracts bind requested operations and targets to the same durable submission, so incomplete plans can be rejected before tool dispatch.
 - Queue dispatch with leases, heartbeats, validated completion callbacks, and stale-attempt protection.
 - Approve or reject the exact persisted job proposal, with structured results and explicit failure, denial, and unknown-outcome states.
+- Cancel a pending or running job: the owner's cancel takes effect only while the job is still in the status that was read, so a completion that lands first wins. A job waiting for approval is refused with `job_waiting_approval`; approve or reject it instead.
 - Owner feedback on a task's result (a critique, optionally with the correct result), saved once per submission identity for review with a copy of the request, task status, route, proposal and answer it describes. Feedback never changes the task, its approval, tool policy or a model.
 - A reviewer queue for that feedback: administrators (`AUTH_ADMIN_EMAILS`) list pending feedback oldest first and record one decision per record — `accepted` or `dismissed`, with a reason. Repeating the same decision returns it, a different one is a conflict, and a decision never changes the task, its approval, permissions or weights.
 - Accepted corrections as training data: the owner previews, then saves, the corrections a reviewer accepted on their own tasks as the next version of their "Accepted corrections" training dataset. Only accepted corrections cross to the AI service; saving goes through training admission and never starts a run.
@@ -27,6 +28,8 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 
 ## How the repositories fit together
 
+![How one request travels through Janus: browser, Phoenix, the Lua gateway, hub routing, a specialist, the trusted guard, your approval, the MCP tool, the verified result and the answer](https://raw.githubusercontent.com/Xenosians/agenticAI/main/docs/assets/request-flow.svg)
+
 ```text
 agenticFrontend (Nim/Karax browser)
     -> agenticBackend / itsm_backend (this API)
@@ -36,7 +39,7 @@ agenticFrontend (Nim/Karax browser)
 
 The browser calls Phoenix. Phoenix owns product state and derives user identity from its session. The AI runtime owns model execution, tool policy, and exact-action approval safety. External provider credentials and execution authority stay server-side.
 
-[How one request travels through all three repositories (animation) and the roadmap](https://github.com/Xenosians/agenticAI#how-the-repositories-fit-together).
+The animation is generated in the AI repository, which also holds the [roadmap](https://github.com/Xenosians/agenticAI#roadmap).
 
 ## Stack
 
@@ -88,11 +91,15 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Identity and sessions | `/api/v1/auth/*` |
 | Chats | `/api/v1/chats`, `/api/v1/chats/search`, `PATCH /api/v1/chats/:id` (title/pinned), `/api/v1/chats/:id/history` |
 | Job creation | `POST /api/v1/jobs` |
-| Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/chats/:id/history` |
+| Current job/history reads and decisions | `/api/v2/jobs/:id`, `/api/v2/jobs/:id/approve`, `/api/v2/jobs/:id/reject`, `/api/v2/jobs/:id/cancel`, `/api/v2/chats/:id/history` |
+| One-time temporary password reveal (owner, password confirmation, CSRF) | `POST /api/v2/jobs/:job_id/credentials/:credential_id/reveal` |
+| Account preferences (completion mail, theme, accent) | `GET/PUT /api/v1/auth/preferences` |
 | Feedback on a task's result | `POST /api/v1/jobs/:id/feedback`, `GET /api/v1/feedback` |
 | Feedback review (administrators) | `GET /api/v1/feedback/review[?status=all]`, `POST /api/v1/feedback/:id/review` |
-| User extensions (models, datasets, Lua row transforms; the owner always comes from the session) | `GET/POST /api/v1/extensions` |
+| User extensions (models, datasets, skills, tool switches, Lua row transforms; the owner always comes from the session) | `GET/POST /api/v1/extensions` |
+| Lua extension records: registration, review, activation, revocation, on/off and audit events | `GET/POST /api/v1/extensions/records`, `GET /api/v1/extensions/records/:id[/events]`, `POST /api/v1/extensions/records/:id/{review,activate,revoke,disable,enable}` |
 | Integration status | `GET /api/v1/integrations` |
+| Operations snapshot and the read-only Proxmox overview | `GET /api/v1/operations`, `GET /api/v1/proxmox/overview` |
 | Learning readiness and candidate SFT runs (never serving or promotion) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight`, `GET/POST /api/v1/learning/runs`, `POST /api/v1/learning/runs/:id/cancel` |
 | The owner's accepted corrections as training data (preview, then save a dataset version; never starts a run) | `GET/POST /api/v1/learning/corrections` |
 | Saved workflows (each run is one durable job) | `GET/POST /api/v1/workflows`, `GET/PUT/DELETE /api/v1/workflows/:id`, `GET/POST /api/v1/workflows/:id/runs` |
@@ -130,7 +137,7 @@ Tests initialize schema in a separate database: `SURREALDB_DATABASE` plus `_test
 - WebSocket updates are notifications; authenticated REST reads and durable storage remain authoritative. Unknown execution outcomes require reconciliation instead of automatic mutation retries.
 - Ownership/session checks are implemented; broad enterprise RBAC/ABAC remains incomplete.
 - Model and dataset extensions are implemented in the AI service. They do not replace SurrealDB or grant new tool authority.
-- The current Lua plugin view is runtime inventory only. Phoenix does not yet persist owner-authored plugin submissions, review decisions, activation, revocation or plugin audit history.
+- Phoenix persists owner-scoped Lua extension records (registration, review, activation, revocation, an on/off switch and audit events), but not plugin source bytes; a record grants no permission and executes nothing, and AI dispatch does not yet read it.
 - Reference retrieval currently uses local full-text search. n8n/workflow support is manifest validation only, with no runner or webhook registration.
 - User model/dataset selection leaves the networking specialist's existing model and context unchanged.
 - Provider availability and real email delivery depend on deployment configuration. There is no unified deployment command for all three repositories.
