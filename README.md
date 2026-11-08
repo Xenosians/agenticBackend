@@ -23,6 +23,7 @@ Phoenix/Elixir API for the Agentic Developer Hub and ITSM platform. It owns auth
 - Backend/AI health and integration status endpoints.
 - Local development mail, Brevo HTTPS API or Gmail OAuth2 delivery, plus a durable mail outbox.
 - Encrypted temporary account credentials and versioned JSON contracts between services.
+- One-time temporary password hand-over: a new account's mailbox does not exist yet, so the owner of the approved request reveals its temporary password once inside Janus after confirming their own password ([API and refusals](docs/account-controls.md#temporary-password-hand-over)).
 
 ## How the repositories fit together
 
@@ -34,6 +35,8 @@ agenticFrontend (Nim/Karax browser)
 ```
 
 The browser calls Phoenix. Phoenix owns product state and derives user identity from its session. The AI runtime owns model execution, tool policy, and exact-action approval safety. External provider credentials and execution authority stay server-side.
+
+[How one request travels through all three repositories (animation) and the roadmap](https://github.com/Xenosians/agenticAI#how-the-repositories-fit-together).
 
 ## Stack
 

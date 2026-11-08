@@ -119,6 +119,11 @@ defmodule ItsmBackendWeb.Router do
     post "/v2/jobs/:id/reject", JobController, :reject
     post "/v2/jobs/:id/cancel", JobController, :cancel
 
+    # One-time hand-over of an approved request's temporary password to its owner.
+    post "/v2/jobs/:job_id/credentials/:credential_id/reveal",
+         CredentialHandoverController,
+         :reveal
+
     # ----------------------------------------------------------
     # Internal AI -> Phoenix durable-job protocol
     # ----------------------------------------------------------

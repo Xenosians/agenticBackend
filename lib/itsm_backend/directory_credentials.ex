@@ -4,8 +4,8 @@ defmodule ItsmBackend.DirectoryCredentials do
   for example by an approved password reset.
 
   Only the AI service's trusted reset path calls this boundary. It stores the
-  credential encrypted; it never returns the plaintext and exposes no
-  retrieval route.
+  credential encrypted and never returns the plaintext; the requester of the
+  approved reset reveals it once through `ItsmBackend.CredentialHandover`.
   """
 
   alias ItsmBackend.ProvisionedAccounts.Cipher

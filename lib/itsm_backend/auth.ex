@@ -389,6 +389,27 @@ defmodule ItsmBackend.Auth do
     end
   end
 
+  @doc """
+  Confirms the password of an active, signed-in user before a sensitive step,
+  such as revealing a temporary credential. Never creates a session.
+  """
+  @spec confirm_password(String.t(), String.t()) :: :ok | {:error, :invalid_credentials | term()}
+  def confirm_password(user_id, password) when is_binary(user_id) and is_binary(password) do
+    case SurrealStore.get_user(user_id) do
+      {:ok, %{"status" => "active", "password_hash" => hash}} when is_binary(hash) ->
+        if Password.verify(password, hash), do: :ok, else: {:error, :invalid_credentials}
+
+      {:ok, _other} ->
+        Password.burn(password)
+        {:error, :invalid_credentials}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def confirm_password(_, _), do: {:error, :invalid_credentials}
+
   def public_user(user) when is_map(user) do
     %{
       "user_id" => user["user_id"],

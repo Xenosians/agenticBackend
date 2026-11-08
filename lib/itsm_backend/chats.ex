@@ -6,6 +6,7 @@ defmodule ItsmBackend.Chats do
 
   alias ItsmBackend.Auth.Authorization
   alias ItsmBackend.Chats.SurrealStore
+  alias ItsmBackend.CredentialHandover
   alias ItsmBackend.Jobs
 
   def create(user, attrs \\ %{}) do
@@ -389,8 +390,7 @@ defmodule ItsmBackend.Chats do
         [user_turn]
 
       content ->
-        [
-          user_turn,
+        assistant_turn =
           %{
             "role" => "assistant",
             "content" => content,
@@ -401,7 +401,9 @@ defmodule ItsmBackend.Chats do
             "references" => answer_references(job),
             "skills" => answer_skills(job)
           }
-        ]
+          |> put_credential_handover(job)
+
+        [user_turn, assistant_turn]
     end
   end
 
@@ -442,6 +444,16 @@ defmodule ItsmBackend.Chats do
   end
 
   defp valid_citation?(_), do: false
+
+  # An approved action that saved a temporary password names it (never the
+  # password) so a reloaded chat can still offer its one-time hand-over. The
+  # hand-over itself decides whether it is still available.
+  defp put_credential_handover(turn, job) do
+    case CredentialHandover.offered_credentials(job) do
+      [credential | _] -> Map.put(turn, "credential_handover", %{"credential_id" => credential})
+      [] -> turn
+    end
+  end
 
   @max_answer_skills 2
   @skill_keys ~w(name version id sha256)

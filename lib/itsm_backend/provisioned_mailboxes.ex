@@ -3,8 +3,9 @@ defmodule ItsmBackend.ProvisionedMailboxes do
   Durable metadata and encrypted credential boundary for the local mail lab.
 
   This records an already provisioned mailbox; it does not create a directory
-  identity, deliver mail, or expose a credential retrieval API. Verification is
-  explicit so saving a credential never implies SMTP or IMAP succeeded.
+  identity or deliver mail. Its temporary password is revealed only once, to the
+  requester, through `ItsmBackend.CredentialHandover`. Verification is explicit
+  so saving a credential never implies SMTP or IMAP succeeded.
   """
 
   alias ItsmBackend.ProvisionedAccounts.Cipher

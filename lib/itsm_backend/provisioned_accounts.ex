@@ -3,7 +3,9 @@ defmodule ItsmBackend.ProvisionedAccounts do
   Durable persistence boundary for successfully provisioned corporate
   identities and their encrypted temporary credentials.
 
-  This module never returns or persists the plaintext credential.
+  This module never returns or persists the plaintext credential. The
+  requester of the approved account reveals it once through
+  `ItsmBackend.CredentialHandover`.
   """
 
   alias ItsmBackend.ProvisionedAccounts.Cipher
