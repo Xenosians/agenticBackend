@@ -43,6 +43,27 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
     def ready, do: {:ok, %{status: "ready"}}
   end
 
+  defmodule TypedReadFailedClient do
+    @moduledoc false
+    def proxmox_overview,
+      do:
+        {:error,
+         {:ai_service_error, 502,
+          %{
+            "error" => "proxmox_read_failed",
+            "reason" => "provider_unreachable",
+            "message" =>
+              "Proxmox VE could not be reached, or it closed the connection before answering."
+          }}}
+
+    def run(_, _), do: {:error, :unsupported_request}
+    def execute_job(_, _, _, _), do: {:error, :unsupported_request}
+    def approve(_), do: {:error, :unsupported_request}
+    def reject(_), do: {:error, :unsupported_request}
+    def health, do: {:ok, %{status: "ok"}}
+    def ready, do: {:ok, %{status: "ready"}}
+  end
+
   setup do
     previous = Application.get_env(:itsm_backend, :ai_client)
     Application.put_env(:itsm_backend, :ai_client, Mock)
@@ -72,6 +93,19 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
       assert response == %{"error" => code}
     end
+  end
+
+  test "a failed read keeps its cause and fixed message", %{owner: owner} do
+    Application.put_env(:itsm_backend, :ai_client, TypedReadFailedClient)
+
+    response = owner |> conn_for() |> get("/api/v1/proxmox/overview") |> json_response(503)
+
+    assert response == %{
+             "error" => "proxmox_read_failed",
+             "reason" => "provider_unreachable",
+             "message" =>
+               "Proxmox VE could not be reached, or it closed the connection before answering."
+           }
   end
 
   defp conn_for(identity),

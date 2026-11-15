@@ -18,12 +18,14 @@ DEFINE TABLE IF NOT EXISTS topology TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS submission_intent TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS extension_record TYPE ANY SCHEMALESS PERMISSIONS NONE;
 DEFINE TABLE IF NOT EXISTS extension_event TYPE ANY SCHEMALESS PERMISSIONS NONE;
+DEFINE TABLE IF NOT EXISTS proxmox_action TYPE ANY SCHEMALESS PERMISSIONS NONE;
 
 DEFINE INDEX IF NOT EXISTS auth_identity_user_id ON auth_identity FIELDS user_id UNIQUE;
 DEFINE INDEX IF NOT EXISTS auth_session_token_hash ON auth_session FIELDS token_hash UNIQUE;
 DEFINE INDEX IF NOT EXISTS auth_session_user_id ON auth_session FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS auth_token_user_purpose ON auth_token FIELDS user_id, purpose;
 DEFINE INDEX IF NOT EXISTS chat_user_id ON chat FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS proxmox_action_user_id ON proxmox_action FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS job_feedback_user_created ON job_feedback FIELDS user_id, created_at;
 DEFINE INDEX IF NOT EXISTS job_feedback_review_created ON job_feedback FIELDS review_status, created_at;
 DEFINE INDEX IF NOT EXISTS job_owner_created ON job FIELDS user_id, created_at;

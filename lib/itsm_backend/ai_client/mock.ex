@@ -120,6 +120,11 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
+  def proxmox_propose(_owner, _node, _vmid, _action) do
+    {:error, :proxmox_action_unavailable}
+  end
+
+  @impl true
   def health do
     {:ok,
      %{

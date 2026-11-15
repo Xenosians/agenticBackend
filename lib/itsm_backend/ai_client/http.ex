@@ -256,6 +256,25 @@ defmodule ItsmBackend.AIClient.HTTP do
     end
   end
 
+  @impl true
+  def proxmox_propose(owner, node, vmid, action) do
+    config = RuntimeConfig.ai_service!()
+
+    # Proposing only reads the guest and records a pending approval, so one
+    # bounded attempt is enough; nothing is retried.
+    case Req.post(
+           "#{config.base_url}/internal/v1/proxmox/actions/propose",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           json: %{owner: owner, node: node, vmid: vmid, action: action},
+           receive_timeout: config.run_timeout_ms,
+           retry: false
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
+      {:ok, %{status: status, body: body}} -> {:error, {:ai_service_error, status, body}}
+      {:error, reason} -> {:error, {:request_failed, reason}}
+    end
+  end
+
   # ------------------------------------------------------------
   # Health
   # ------------------------------------------------------------

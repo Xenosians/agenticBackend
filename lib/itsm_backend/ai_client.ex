@@ -98,13 +98,24 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  # Asks the AI to prepare one governed power action on an exact guest for
+  # the authenticated owner; it returns a pending approval, never a result.
+  @callback proxmox_propose(
+              owner :: String.t(),
+              node :: String.t(),
+              vmid :: pos_integer(),
+              action :: String.t()
+            ) ::
+              {:ok, map()}
+              | {:error, term()}
+
   # Asks the AI to stop one running attempt. Phoenix has already recorded the
   # cancel, so a failed request never undoes it; the attempt's lease ends.
   @callback cancel_job(job_id :: String.t(), attempt :: pos_integer()) ::
               {:ok, map()}
               | {:error, term()}
 
-  @optional_callbacks cancel_job: 2, proxmox_overview: 0
+  @optional_callbacks cancel_job: 2, proxmox_overview: 0, proxmox_propose: 4
 
   @doc "Asks the AI to stop a cancelled attempt, when the client supports it."
   @spec stop_job(module(), String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}
