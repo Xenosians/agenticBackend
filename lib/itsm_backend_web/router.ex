@@ -46,6 +46,7 @@ defmodule ItsmBackendWeb.Router do
     post "/v1/extensions/records/:id/enable", ExtensionRecordController, :enable
     get "/v1/integrations", IntegrationController, :index
     get "/v1/proxmox/overview", ProxmoxController, :overview
+    get "/v1/tailnet/overview", TailnetController, :overview
     get "/v1/proxmox/actions", ProxmoxActionController, :index
     post "/v1/proxmox/actions", ProxmoxActionController, :create
     post "/v1/proxmox/actions/:id/approve", ProxmoxActionController, :approve

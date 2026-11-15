@@ -98,6 +98,11 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  # Reads each tailnet device's health and the tailnet's DNS settings; changes nothing.
+  @callback tailnet_overview() ::
+              {:ok, map()}
+              | {:error, term()}
+
   # Asks the AI to prepare one governed power action on an exact guest for
   # the authenticated owner; it returns a pending approval, never a result.
   @callback proxmox_propose(
@@ -115,7 +120,10 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
-  @optional_callbacks cancel_job: 2, proxmox_overview: 0, proxmox_propose: 4
+  @optional_callbacks cancel_job: 2,
+                      proxmox_overview: 0,
+                      proxmox_propose: 4,
+                      tailnet_overview: 0
 
   @doc "Asks the AI to stop a cancelled attempt, when the client supports it."
   @spec stop_job(module(), String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}

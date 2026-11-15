@@ -257,6 +257,22 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   @impl true
+  def tailnet_overview do
+    config = RuntimeConfig.ai_service!()
+
+    case Req.get(
+           "#{config.base_url}/internal/v1/tailnet/overview",
+           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           receive_timeout: config.run_timeout_ms,
+           retry: false
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
+      {:ok, %{status: status, body: body}} -> {:error, {:ai_service_error, status, body}}
+      {:error, reason} -> {:error, {:request_failed, reason}}
+    end
+  end
+
+  @impl true
   def proxmox_propose(owner, node, vmid, action) do
     config = RuntimeConfig.ai_service!()
 
