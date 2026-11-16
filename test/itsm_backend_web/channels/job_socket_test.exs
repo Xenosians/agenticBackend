@@ -212,6 +212,49 @@ defmodule ItsmBackendWeb.JobSocketTest do
     assert {:ok, %{status: "processing", result: nil}} = Jobs.get(ctx.job.id)
   end
 
+  test "AI progress may name the agent doing the step, only as a plain agent name", ctx do
+    {:ok, processing} = Job.claim(ctx.job, 300)
+    {:ok, _} = Jobs.update(processing)
+
+    {:ok, _reply, _viewer} =
+      subscribe_and_join(user_socket(ctx.identity), JobChannel, "job:#{ctx.job.id}")
+
+    {:ok, _reply, ai} =
+      subscribe_and_join(internal_socket(), JobProgressChannel, "ai_jobs:#{ctx.job.id}", %{
+        "attempt" => 1
+      })
+
+    ref = push(ai, "progress", %{"stage" => "planning", "agent" => "proxmox-specialist"})
+    assert_reply ref, :ok, %{accepted: true}
+
+    assert_push "job_progress",
+                %{attempt: 1, stage: "planning", agent: "proxmox-specialist"},
+                1_000
+
+    ref = push(ai, "progress", %{"stage" => "synthesizing"})
+    assert_reply ref, :ok, %{accepted: true}
+    assert_push "job_progress", progress, 1_000
+    assert progress == %{job_id: ctx.job.id, attempt: 1, stage: "synthesizing"}
+
+    for agent <- [
+          "Proxmox-Specialist",
+          "proxmox specialist",
+          "-proxmox",
+          "proxmox--specialist",
+          "",
+          String.duplicate("a", 65),
+          42,
+          nil
+        ] do
+      ref = push(ai, "progress", %{"stage" => "planning", "agent" => agent})
+      assert_reply ref, :error, %{reason: "invalid_request"}
+    end
+
+    ref = push(ai, "progress", %{"stage" => "planning", "agent" => "hub", "extra" => "x"})
+    assert_reply ref, :error, %{reason: "invalid_request"}
+    refute_push "job_progress", _
+  end
+
   test "AI answer text reaches the job's viewer as a numbered preview and is never stored", ctx do
     {:ok, processing} = Job.claim(ctx.job, 300)
     {:ok, _} = Jobs.update(processing)

@@ -48,12 +48,14 @@ defmodule ItsmBackendWeb.JobChannel do
     end
   end
 
-  def handle_info({:job_progress, job_id, attempt, stage}, %{assigns: %{job_id: job_id}} = socket) do
-    relay_active(socket, job_id, attempt, "job_progress", %{
-      job_id: job_id,
-      attempt: attempt,
-      stage: stage
-    })
+  def handle_info(
+        {:job_progress, job_id, attempt, stage, agent},
+        %{assigns: %{job_id: job_id}} = socket
+      ) do
+    payload = %{job_id: job_id, attempt: attempt, stage: stage}
+    # The agent doing the step, when the AI named one (display only).
+    payload = if agent, do: Map.put(payload, :agent, agent), else: payload
+    relay_active(socket, job_id, attempt, "job_progress", payload)
   end
 
   def handle_info(

@@ -11,6 +11,11 @@ defmodule ItsmBackendWeb.JobProgressChannel do
   alias ItsmBackendWeb.LeaseRenewal
 
   @stages ~w(routing planning executing synthesizing waiting_provider)
+  # An agent's identifier as the AI names its agents ("hub" or e.g.
+  # "proxmox-specialist"): lower-case words joined by single hyphens. Display
+  # only: the browser shows which agent is doing the step; it grants nothing.
+  @agent_name ~r/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/
+  @max_agent_name_bytes 64
   # A streamed answer arrives in numbered parts of at most this many bytes. They
   # are relayed to the job's viewers as a preview and never stored: the durable
   # result replaces them (SRS 1.9 FR-080).
@@ -32,20 +37,15 @@ defmodule ItsmBackendWeb.JobProgressChannel do
   @impl true
   def handle_in("progress", %{"stage" => stage} = payload, socket)
       when stage in @stages and map_size(payload) == 1 do
-    %{job_id: job_id, attempt: attempt} = socket.assigns
+    relay_progress(socket, stage, nil)
+  end
 
-    case active_job(job_id, attempt) do
-      {:ok, _job} ->
-        Phoenix.PubSub.broadcast(
-          ItsmBackend.PubSub,
-          Events.topic(job_id),
-          {:job_progress, job_id, attempt, stage}
-        )
-
-        {:reply, {:ok, %{accepted: true}}, socket}
-
-      _ ->
-        {:reply, {:error, %{reason: "inactive_attempt"}}, socket}
+  def handle_in("progress", %{"stage" => stage, "agent" => agent} = payload, socket)
+      when stage in @stages and is_binary(agent) and map_size(payload) == 2 do
+    if agent_name?(agent) do
+      relay_progress(socket, stage, agent)
+    else
+      {:reply, {:error, %{reason: "invalid_request"}}, socket}
     end
   end
 
@@ -83,6 +83,27 @@ defmodule ItsmBackendWeb.JobProgressChannel do
   def handle_in(_event, _payload, socket) do
     {:reply, {:error, %{reason: "invalid_request"}}, socket}
   end
+
+  defp relay_progress(socket, stage, agent) do
+    %{job_id: job_id, attempt: attempt} = socket.assigns
+
+    case active_job(job_id, attempt) do
+      {:ok, _job} ->
+        Phoenix.PubSub.broadcast(
+          ItsmBackend.PubSub,
+          Events.topic(job_id),
+          {:job_progress, job_id, attempt, stage, agent}
+        )
+
+        {:reply, {:ok, %{accepted: true}}, socket}
+
+      _ ->
+        {:reply, {:error, %{reason: "inactive_attempt"}}, socket}
+    end
+  end
+
+  defp agent_name?(agent),
+    do: byte_size(agent) <= @max_agent_name_bytes and Regex.match?(@agent_name, agent)
 
   def active_job(job_id, attempt) do
     with {:ok,
