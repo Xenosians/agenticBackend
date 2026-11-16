@@ -11,7 +11,8 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
     "task_completed" => true,
     "theme" => "dark",
     "accent" => "mono",
-    "pinned_views" => ["knowledge", "operations"]
+    "pinned_views" => ["knowledge", "operations"],
+    "gladiators" => true
   }
 
   test "preferences default on, persist explicitly, and never update another owner" do
@@ -107,6 +108,54 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
              put(authed(owner), "/api/v1/auth/preferences", %{"theme" => "dark"}),
              503
            )["error"] == "preferences_save_unconfirmed"
+  end
+
+  test "the gladiators are shown by default and can be hidden, keeping the other settings" do
+    owner = AuthTestSupport.authenticated_identity!()
+    other = AuthTestSupport.authenticated_identity!()
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"gladiators" => false}),
+             200
+           )["preferences"] == %{@defaults | "gladiators" => false}
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200)["preferences"][
+             "gladiators"
+           ] == false
+
+    assert {:ok, @defaults} = Preferences.get(other.user["user_id"])
+
+    for body <- [
+          %{"gladiators" => "false"},
+          %{"gladiators" => nil},
+          %{"gladiators" => 0},
+          %{"gladiators" => "hidden"}
+        ] do
+      assert json_response(put(authed(owner), "/api/v1/auth/preferences", body), 422)
+    end
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"gladiators" => true}),
+             200
+           )["preferences"] == @defaults
+  end
+
+  test "the preferences request contract publishes every setting the owner may send" do
+    assert ItsmBackendWeb.PreferenceController.__request_contract__(:update).optional_body ==
+             ["task_completed", "theme", "accent", "pinned_views", "gladiators"]
+  end
+
+  test "an unknown stored gladiator setting is unknown, not replaced by a default" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    assert {:ok, _} =
+             Surreal.query(
+               "UPDATE ONLY type::record('app_user', $id) SET notification_preferences.gladiators = 'sometimes';",
+               %{"id" => owner.user["user_id"]}
+             )
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 503)["error"] ==
+             "preferences_unavailable"
   end
 
   test "pinned dashboards are saved in the order chosen and keep the other settings" do
