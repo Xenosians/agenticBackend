@@ -98,6 +98,11 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
+  # Reads each guest's newest backup and every node's physical disk health; changes nothing.
+  @callback proxmox_health() ::
+              {:ok, map()}
+              | {:error, term()}
+
   # Reads each tailnet device's health and the tailnet's DNS settings; changes nothing.
   @callback tailnet_overview() ::
               {:ok, map()}
@@ -122,6 +127,7 @@ defmodule ItsmBackend.AIClient do
 
   @optional_callbacks cancel_job: 2,
                       proxmox_overview: 0,
+                      proxmox_health: 0,
                       proxmox_propose: 4,
                       tailnet_overview: 0
 

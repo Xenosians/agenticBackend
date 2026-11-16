@@ -44,6 +44,26 @@ defmodule ItsmBackend.AIClient.HTTPTest do
     assert {:ok, %{"ok" => true, "provider" => "proxmox"}} = HTTP.proxmox_overview()
   end
 
+  test "Proxmox backups and disk health use the internal token and their own API path" do
+    Application.put_env(:itsm_backend, :internal_job_token, "test-internal-token")
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/internal/v1/proxmox/health"
+      assert Plug.Conn.get_req_header(conn, "x-internal-token") == ["test-internal-token"]
+      json_response(conn, 200, %{"schema" => "proxmox-health.v1"})
+    end)
+
+    assert {:ok, %{"schema" => "proxmox-health.v1"}} = HTTP.proxmox_health()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      json_response(conn, 502, %{"error" => "proxmox_read_failed"})
+    end)
+
+    assert {:error, {:ai_service_error, 502, %{"error" => "proxmox_read_failed"}}} =
+             HTTP.proxmox_health()
+  end
+
   # ------------------------------------------------------------
   # Test configuration + Req transport isolation
   # ------------------------------------------------------------

@@ -100,6 +100,7 @@ Development defaults to `http://127.0.0.1:4000`. Health is available at `/api/he
 | Lua extension records: registration, review, activation, revocation, on/off and audit events | `GET/POST /api/v1/extensions/records`, `GET /api/v1/extensions/records/:id[/events]`, `POST /api/v1/extensions/records/:id/{review,activate,revoke,disable,enable}` |
 | Integration status | `GET /api/v1/integrations` |
 | Operations snapshot and the read-only Proxmox overview | `GET /api/v1/operations`, `GET /api/v1/proxmox/overview` |
+| Proxmox backups and physical-disk health (read-only) | `GET /api/v1/proxmox/health` |
 | Learning readiness and candidate SFT runs (never serving or promotion) | `GET /api/v1/learning`, `POST /api/v1/learning/preflight`, `GET/POST /api/v1/learning/runs`, `POST /api/v1/learning/runs/:id/cancel` |
 | The owner's accepted corrections as training data (preview, then save a dataset version; never starts a run) | `GET/POST /api/v1/learning/corrections` |
 | Saved workflows (each run is one durable job) | `GET/POST /api/v1/workflows`, `GET/PUT/DELETE /api/v1/workflows/:id`, `GET/POST /api/v1/workflows/:id/runs` |

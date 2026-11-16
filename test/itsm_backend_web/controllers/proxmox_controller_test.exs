@@ -64,6 +64,45 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
     def ready, do: {:ok, %{status: "ready"}}
   end
 
+  defmodule HealthClient do
+    @moduledoc false
+    def proxmox_health,
+      do:
+        {:ok,
+         %{
+           "schema" => "proxmox-health.v1",
+           "backups" => %{"ok" => true, "data" => %{"schema" => "proxmox-backups.v1"}},
+           "disks" => [%{"node" => "pve-a", "result" => %{"ok" => true}}]
+         }}
+
+    def run(_, _), do: {:error, :unsupported_request}
+    def execute_job(_, _, _, _), do: {:error, :unsupported_request}
+    def approve(_), do: {:error, :unsupported_request}
+    def reject(_), do: {:error, :unsupported_request}
+    def health, do: {:ok, %{status: "ok"}}
+    def ready, do: {:ok, %{status: "ready"}}
+  end
+
+  defmodule HealthReadFailedClient do
+    @moduledoc false
+    def proxmox_health,
+      do:
+        {:error,
+         {:ai_service_error, 502,
+          %{
+            "error" => "proxmox_read_failed",
+            "reason" => "provider_timeout",
+            "message" => "Proxmox VE did not answer in time."
+          }}}
+
+    def run(_, _), do: {:error, :unsupported_request}
+    def execute_job(_, _, _, _), do: {:error, :unsupported_request}
+    def approve(_), do: {:error, :unsupported_request}
+    def reject(_), do: {:error, :unsupported_request}
+    def health, do: {:ok, %{status: "ok"}}
+    def ready, do: {:ok, %{status: "ready"}}
+  end
+
   setup do
     previous = Application.get_env(:itsm_backend, :ai_client)
     Application.put_env(:itsm_backend, :ai_client, Mock)
@@ -105,6 +144,35 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
              "reason" => "provider_unreachable",
              "message" =>
                "Proxmox VE could not be reached, or it closed the connection before answering."
+           }
+  end
+
+  test "backups and disk health need a signed-in account", %{conn: conn} do
+    assert conn |> get("/api/v1/proxmox/health") |> json_response(401)
+  end
+
+  test "backups and disk health pass through for the owner", %{owner: owner} do
+    Application.put_env(:itsm_backend, :ai_client, HealthClient)
+
+    response = owner |> conn_for() |> get("/api/v1/proxmox/health") |> json_response(200)
+
+    assert response["schema"] == "proxmox-health.v1"
+    assert [%{"node" => "pve-a"}] = response["disks"]
+  end
+
+  test "an AI without the health read or a failed read stays unavailable with its cause", %{
+    owner: owner
+  } do
+    response = owner |> conn_for() |> get("/api/v1/proxmox/health") |> json_response(503)
+    assert response == %{"error" => "proxmox_dashboard_unavailable"}
+
+    Application.put_env(:itsm_backend, :ai_client, HealthReadFailedClient)
+    response = owner |> conn_for() |> get("/api/v1/proxmox/health") |> json_response(503)
+
+    assert response == %{
+             "error" => "proxmox_read_failed",
+             "reason" => "provider_timeout",
+             "message" => "Proxmox VE did not answer in time."
            }
   end
 

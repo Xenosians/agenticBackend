@@ -4,17 +4,24 @@ defmodule ItsmBackendWeb.ProxmoxController do
   use ItsmBackendWeb.RequestContract
 
   request_contract(:overview, [])
+  request_contract(:health, [])
 
   alias ItsmBackend.RuntimeConfig
   alias ItsmBackendWeb.AuthRequest
 
-  def overview(conn, _params) do
+  def overview(conn, _params), do: read(conn, :proxmox_overview)
+
+  # Backups and each node's physical disks: read separately from the overview
+  # because they list backup storages and run SMART on every node.
+  def health(conn, _params), do: read(conn, :proxmox_health)
+
+  defp read(conn, callback) do
     case AuthRequest.require_authenticated(conn) do
       {:ok, conn, _ctx} ->
         ai_client = RuntimeConfig.ai_client!()
 
-        if function_exported?(ai_client, :proxmox_overview, 0) do
-          case ai_client.proxmox_overview() do
+        if function_exported?(ai_client, callback, 0) do
+          case apply(ai_client, callback, []) do
             {:ok, body} when is_map(body) ->
               json(conn, body)
 
