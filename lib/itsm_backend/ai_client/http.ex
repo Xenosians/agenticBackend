@@ -241,12 +241,13 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   @impl true
-  def proxmox_overview do
+  def proxmox_overview(owner) do
     config = RuntimeConfig.ai_service!()
 
     case Req.get(
            "#{config.base_url}/internal/v1/proxmox/overview",
            headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           params: [owner: owner],
            receive_timeout: config.run_timeout_ms,
            retry: false
          ) do
@@ -257,12 +258,13 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   @impl true
-  def proxmox_health do
+  def proxmox_health(owner) do
     config = RuntimeConfig.ai_service!()
 
     case Req.get(
            "#{config.base_url}/internal/v1/proxmox/health",
            headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           params: [owner: owner],
            receive_timeout: config.run_timeout_ms,
            retry: false
          ) do
@@ -273,12 +275,13 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   @impl true
-  def tailnet_overview do
+  def tailnet_overview(owner) do
     config = RuntimeConfig.ai_service!()
 
     case Req.get(
            "#{config.base_url}/internal/v1/tailnet/overview",
            headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           params: [owner: owner],
            receive_timeout: config.run_timeout_ms,
            retry: false
          ) do

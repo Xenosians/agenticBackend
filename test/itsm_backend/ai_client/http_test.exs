@@ -38,10 +38,24 @@ defmodule ItsmBackend.AIClient.HTTPTest do
       assert conn.method == "GET"
       assert conn.request_path == "/internal/v1/proxmox/overview"
       assert Plug.Conn.get_req_header(conn, "x-internal-token") == ["test-internal-token"]
+      # The signed-in account, so the AI reads that account's own Proxmox link.
+      assert conn.query_params == %{"owner" => "owner-1"}
       json_response(conn, 200, %{"ok" => true, "provider" => "proxmox"})
     end)
 
-    assert {:ok, %{"ok" => true, "provider" => "proxmox"}} = HTTP.proxmox_overview()
+    assert {:ok, %{"ok" => true, "provider" => "proxmox"}} = HTTP.proxmox_overview("owner-1")
+  end
+
+  test "the tailnet overview names the signed-in account" do
+    Application.put_env(:itsm_backend, :internal_job_token, "test-internal-token")
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/internal/v1/tailnet/overview"
+      assert conn.query_params == %{"owner" => "owner-1"}
+      json_response(conn, 200, %{"ok" => true, "provider" => "tailscale"})
+    end)
+
+    assert {:ok, %{"provider" => "tailscale"}} = HTTP.tailnet_overview("owner-1")
   end
 
   test "Proxmox backups and disk health use the internal token and their own API path" do
@@ -51,17 +65,18 @@ defmodule ItsmBackend.AIClient.HTTPTest do
       assert conn.method == "GET"
       assert conn.request_path == "/internal/v1/proxmox/health"
       assert Plug.Conn.get_req_header(conn, "x-internal-token") == ["test-internal-token"]
+      assert conn.query_params == %{"owner" => "owner-1"}
       json_response(conn, 200, %{"schema" => "proxmox-health.v1"})
     end)
 
-    assert {:ok, %{"schema" => "proxmox-health.v1"}} = HTTP.proxmox_health()
+    assert {:ok, %{"schema" => "proxmox-health.v1"}} = HTTP.proxmox_health("owner-1")
 
     Req.Test.expect(__MODULE__, fn conn ->
       json_response(conn, 502, %{"error" => "proxmox_read_failed"})
     end)
 
     assert {:error, {:ai_service_error, 502, %{"error" => "proxmox_read_failed"}}} =
-             HTTP.proxmox_health()
+             HTTP.proxmox_health("owner-1")
   end
 
   # ------------------------------------------------------------

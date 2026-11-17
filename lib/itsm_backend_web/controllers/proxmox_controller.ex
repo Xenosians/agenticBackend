@@ -17,11 +17,13 @@ defmodule ItsmBackendWeb.ProxmoxController do
 
   defp read(conn, callback) do
     case AuthRequest.require_authenticated(conn) do
-      {:ok, conn, _ctx} ->
+      {:ok, conn, ctx} ->
         ai_client = RuntimeConfig.ai_client!()
 
-        if function_exported?(ai_client, callback, 0) do
-          case apply(ai_client, callback, []) do
+        # The AI reads the signed-in account's own Proxmox link (else the
+        # machine default); the account comes only from the session.
+        if function_exported?(ai_client, callback, 1) do
+          case apply(ai_client, callback, [ctx.user["user_id"]]) do
             {:ok, body} when is_map(body) ->
               json(conn, body)
 

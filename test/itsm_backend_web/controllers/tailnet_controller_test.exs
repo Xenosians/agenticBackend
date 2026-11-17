@@ -27,7 +27,10 @@ defmodule ItsmBackendWeb.TailnetControllerTest do
 
   defmodule Client do
     @moduledoc false
-    def tailnet_overview, do: Process.get(:tailnet_answer)
+    def tailnet_overview(owner) do
+      send(self(), {:tailnet_owner, owner})
+      Process.get(:tailnet_answer)
+    end
 
     def run(_, _), do: {:error, :unsupported_request}
     def execute_job(_, _, _, _), do: {:error, :unsupported_request}
@@ -54,6 +57,22 @@ defmodule ItsmBackendWeb.TailnetControllerTest do
 
     assert owner |> conn_for() |> get("/api/v1/tailnet/overview") |> json_response(200) ==
              @overview
+
+    # The AI reads the account's own Tailscale link; the account comes from the session.
+    user_id = owner.user["user_id"]
+    assert_received {:tailnet_owner, ^user_id}
+  end
+
+  test "a browser cannot name another account", %{owner: owner} do
+    Process.put(:tailnet_answer, {:ok, @overview})
+
+    owner
+    |> conn_for()
+    |> get("/api/v1/tailnet/overview?owner=someone-else")
+    |> json_response(200)
+
+    user_id = owner.user["user_id"]
+    assert_received {:tailnet_owner, ^user_id}
   end
 
   test "an AI without the tailnet read is unavailable, not empty", %{owner: owner} do

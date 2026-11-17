@@ -9,14 +9,15 @@ defmodule ItsmBackendWeb.TailnetController do
   alias ItsmBackendWeb.AuthRequest
 
   # Read-only: the signed-in owner sees each tailnet device's health and the
-  # tailnet's DNS settings exactly as the AI read them. Nothing is changed.
+  # tailnet's DNS settings exactly as the AI read them, from the account's own
+  # Tailscale link (else the machine default). Nothing is changed.
   def overview(conn, _params) do
     case AuthRequest.require_authenticated(conn) do
-      {:ok, conn, _ctx} ->
+      {:ok, conn, ctx} ->
         ai_client = RuntimeConfig.ai_client!()
 
-        if function_exported?(ai_client, :tailnet_overview, 0) do
-          case ai_client.tailnet_overview() do
+        if function_exported?(ai_client, :tailnet_overview, 1) do
+          case ai_client.tailnet_overview(ctx.user["user_id"]) do
             {:ok, body} when is_map(body) ->
               json(conn, body)
 

@@ -6,7 +6,7 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule NotConfiguredClient do
     @moduledoc false
-    def proxmox_overview,
+    def proxmox_overview(_owner),
       do: {:error, {:ai_service_error, 503, %{"error" => "proxmox_not_configured"}}}
 
     def run(_, _), do: {:error, :unsupported_request}
@@ -19,7 +19,7 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule InvalidClient do
     @moduledoc false
-    def proxmox_overview,
+    def proxmox_overview(_owner),
       do: {:error, {:ai_service_error, 503, %{"error" => "proxmox_configuration_invalid"}}}
 
     def run(_, _), do: {:error, :unsupported_request}
@@ -32,7 +32,7 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule ReadFailedClient do
     @moduledoc false
-    def proxmox_overview,
+    def proxmox_overview(_owner),
       do: {:error, {:ai_service_error, 502, %{"error" => "proxmox_read_failed"}}}
 
     def run(_, _), do: {:error, :unsupported_request}
@@ -45,7 +45,7 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule TypedReadFailedClient do
     @moduledoc false
-    def proxmox_overview,
+    def proxmox_overview(_owner),
       do:
         {:error,
          {:ai_service_error, 502,
@@ -66,7 +66,12 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule HealthClient do
     @moduledoc false
-    def proxmox_health,
+    def proxmox_health(owner) do
+      send(self(), {:health_owner, owner})
+      reading()
+    end
+
+    defp reading,
       do:
         {:ok,
          %{
@@ -85,7 +90,7 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
   defmodule HealthReadFailedClient do
     @moduledoc false
-    def proxmox_health,
+    def proxmox_health(_owner),
       do:
         {:error,
          {:ai_service_error, 502,
@@ -158,6 +163,9 @@ defmodule ItsmBackendWeb.ProxmoxControllerTest do
 
     assert response["schema"] == "proxmox-health.v1"
     assert [%{"node" => "pve-a"}] = response["disks"]
+    # The AI reads the signed-in account's own Proxmox link.
+    user_id = owner.user["user_id"]
+    assert_received {:health_owner, ^user_id}
   end
 
   test "an AI without the health read or a failed read stays unavailable with its cause", %{

@@ -16,7 +16,7 @@ defmodule ItsmBackendWeb.ProxmoxActionTestClient do
   defdelegate integrations(), to: ItsmBackend.AIClient.Mock
 
   @impl true
-  def proxmox_overview do
+  def proxmox_overview(_owner) do
     case Application.get_env(:itsm_backend, :proxmox_test_overview) do
       nil -> {:error, :proxmox_dashboard_unavailable}
       answer -> answer

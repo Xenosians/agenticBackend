@@ -94,17 +94,20 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
-  @callback proxmox_overview() ::
+  # Each dashboard read names the signed-in account (`owner`, from the session):
+  # the AI reads that account's own Proxmox or Tailscale link, else the
+  # machine default (owner decision, 17 November).
+  @callback proxmox_overview(owner :: String.t()) ::
               {:ok, map()}
               | {:error, term()}
 
   # Reads each guest's newest backup and every node's physical disk health; changes nothing.
-  @callback proxmox_health() ::
+  @callback proxmox_health(owner :: String.t()) ::
               {:ok, map()}
               | {:error, term()}
 
   # Reads each tailnet device's health and the tailnet's DNS settings; changes nothing.
-  @callback tailnet_overview() ::
+  @callback tailnet_overview(owner :: String.t()) ::
               {:ok, map()}
               | {:error, term()}
 
@@ -126,10 +129,10 @@ defmodule ItsmBackend.AIClient do
               | {:error, term()}
 
   @optional_callbacks cancel_job: 2,
-                      proxmox_overview: 0,
-                      proxmox_health: 0,
+                      proxmox_overview: 1,
+                      proxmox_health: 1,
                       proxmox_propose: 4,
-                      tailnet_overview: 0
+                      tailnet_overview: 1
 
   @doc "Asks the AI to stop a cancelled attempt, when the client supports it."
   @spec stop_job(module(), String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}
