@@ -236,6 +236,23 @@ defmodule ItsmBackendWeb.TopologyControllerTest do
     assert map_size(body) == 3
     assert report["topology_id"] == topology_id and report["topology_version"] == 1
     assert report["state_kind"] == "simulated" and report["execution_enabled"] == false
+    # The AI observes this account's own tailnet: the owner comes from the session, in the query.
+    assert_receive {:engineering_query, @drift_path, query}
+    assert URI.decode_query(query) == %{"owner" => owner.user["user_id"]}
+  end
+
+  test "a client-chosen owner never reaches the drift check", %{owner: owner} do
+    saved = create(owner, "Spoofed")
+
+    owner
+    |> bearer()
+    |> post("/api/v1/topologies/#{saved["topology_id"]}/drift?owner=someone-else", %{
+      "version" => 1
+    })
+    |> json_response(200)
+
+    assert_receive {:engineering_query, @drift_path, query}
+    assert URI.decode_query(query) == %{"owner" => owner.user["user_id"]}
   end
 
   test "a save racing a newer version cannot overwrite it", %{owner: owner} do

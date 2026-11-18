@@ -73,7 +73,7 @@ defmodule ItsmBackendWeb.TopologyController do
   def drift(conn, %{"id" => id} = params) do
     with {:ok, conn, ctx} <- AuthRequest.require_authenticated(conn, csrf: true) do
       case Topologies.for_drift(ctx.user, id, params["version"]) do
-        {:ok, topology} -> report(conn, Engineering.drift(topology))
+        {:ok, topology} -> report(conn, Engineering.drift(ctx.user["user_id"], topology))
         error -> respond(conn, error, :ok)
       end
     else

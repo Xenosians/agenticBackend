@@ -3,8 +3,9 @@ defmodule ItsmBackend.Engineering do
   Engineering reads through the AI service (SRS 1.9 FR-093, V19-09).
 
   Phoenix sends one exact saved topology version, or netlist text, and checks
-  the receipt before anyone sees it. The owner always comes from the session;
-  no provider, URL or path crosses this boundary.
+  the receipt before anyone sees it. The owner always comes from the session,
+  so the AI observes that account's own tailnet link; no provider, URL or path
+  crosses this boundary.
   """
 
   alias ItsmBackend.Engineering.PublicContract
@@ -16,14 +17,14 @@ defmodule ItsmBackend.Engineering do
   @public_refusals ~w(invalid_topology private_topology_content invalid_netlist invalid_engineering_request)
   @netlist_limit 2_000_000
 
-  def drift(topology) do
+  def drift(owner, topology) when is_binary(owner) and owner != "" do
     body = %{
       "topology_id" => topology["topology_id"],
       "version" => topology["version"],
       "topology" => topology["design"]
     }
 
-    with {:ok, report} <- forward(@drift_path, body),
+    with {:ok, report} <- forward(@drift_path, body, owner: owner),
          true <-
            PublicContract.valid_drift?(report, topology["topology_id"], topology["version"]) ||
              {:error, :invalid_receipt} do
@@ -32,7 +33,7 @@ defmodule ItsmBackend.Engineering do
   end
 
   def inspect_netlist(text) when is_binary(text) and byte_size(text) in 1..@netlist_limit do
-    with {:ok, report} <- forward(@netlist_path, %{"netlist" => text}),
+    with {:ok, report} <- forward(@netlist_path, %{"netlist" => text}, []),
          true <- PublicContract.valid_netlist?(report) || {:error, :invalid_receipt} do
       {:ok, report}
     end
@@ -40,11 +41,12 @@ defmodule ItsmBackend.Engineering do
 
   def inspect_netlist(_), do: {:refused, "invalid_netlist"}
 
-  defp forward(path, body) do
+  defp forward(path, body, params) do
     config = RuntimeConfig.ai_service!()
 
     case Req.post("#{config.base_url}#{path}",
            headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+           params: params,
            json: body,
            retry: false,
            receive_timeout: 60_000

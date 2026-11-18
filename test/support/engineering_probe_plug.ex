@@ -16,6 +16,8 @@ defmodule ItsmBackendWeb.EngineeringProbePlug do
       {:engineering_request, conn.request_path, request, get_req_header(conn, "x-internal-token")}
     )
 
+    send(test_pid, {:engineering_query, conn.request_path, conn.query_string})
+
     {status, response} =
       case Agent.get(responses, &Map.fetch!(&1, conn.request_path)) do
         {status, :echo_drift} ->
