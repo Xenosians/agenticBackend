@@ -607,6 +607,28 @@ defmodule ItsmBackend.ContractsTest do
     )
   end
 
+  test "tool-proposal carries the text a destructive approval must be confirmed with" do
+    assert_valid(
+      :tool_proposal,
+      %{
+        "tool" => "proxmox_guest_delete",
+        "arguments" => %{"node" => "pve-a", "vmid" => 990, "expected_name" => "janus-lab"},
+        "approval_id" => "approval-123",
+        "confirmation_text" => "janus-lab"
+      }
+    )
+
+    refute_valid(
+      :tool_proposal,
+      %{
+        "tool" => "proxmox_guest_delete",
+        "arguments" => %{},
+        "approval_id" => "approval-123",
+        "confirmation_text" => ""
+      }
+    )
+  end
+
   # ------------------------------------------------------------
   # Common error
   # ------------------------------------------------------------

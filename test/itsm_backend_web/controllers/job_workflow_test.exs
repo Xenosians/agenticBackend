@@ -27,14 +27,14 @@ defmodule ItsmBackendWeb.JobWorkflowTest do
              &(&1["job_id"] == job.id and &1["status"] == "waiting_approval")
            )
 
-    assert_receive {:ai_approval_decision, :approve, "account-approval"}
+    assert_receive {:ai_approval_decision, :approve, "account-approval", nil}
 
     # A delayed click or transport replay of the first card cannot approve Jira.
     assert decide(id, job, "account-approval") |> json_response(409) == %{
              "error" => "approval_binding_changed"
            }
 
-    refute_receive {:ai_approval_decision, :approve, "ticket-approval"}
+    refute_receive {:ai_approval_decision, :approve, "ticket-approval", nil}
     assert {:ok, current} = Jobs.get(job.id)
     assert current.proposed_tool["approval_id"] == "ticket-approval"
   end
@@ -47,7 +47,7 @@ defmodule ItsmBackendWeb.JobWorkflowTest do
       assert json_response(conn, 409) == %{"error" => "approval_binding_changed"}
     end
 
-    refute_receive {:ai_approval_decision, _, _}
+    refute_receive {:ai_approval_decision, _, _, _}
   end
 
   test "missing or substituted continuation never marks partial work completed", %{identity: id} do

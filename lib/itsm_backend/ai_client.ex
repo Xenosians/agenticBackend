@@ -74,7 +74,7 @@ defmodule ItsmBackend.AIClient do
     end
   end
 
-  @callback approve(approval_id :: String.t()) ::
+  @callback approve(approval_id :: String.t(), confirm_name :: String.t() | nil) ::
               {:ok, map()}
               | {:error, term()}
 
@@ -111,13 +111,13 @@ defmodule ItsmBackend.AIClient do
               {:ok, map()}
               | {:error, term()}
 
-  # Asks the AI to prepare one governed power action on an exact guest for
-  # the authenticated owner; it returns a pending approval, never a result.
+  # Asks the AI to prepare one governed guest action for the authenticated
+  # owner; it returns a pending approval, never a result. The proposal names
+  # the exact guest (or none, for a guest the change creates) and the change's
+  # own values.
   @callback proxmox_propose(
               owner :: String.t(),
-              node :: String.t(),
-              vmid :: pos_integer(),
-              action :: String.t()
+              proposal :: map()
             ) ::
               {:ok, map()}
               | {:error, term()}
@@ -131,7 +131,7 @@ defmodule ItsmBackend.AIClient do
   @optional_callbacks cancel_job: 2,
                       proxmox_overview: 1,
                       proxmox_health: 1,
-                      proxmox_propose: 4,
+                      proxmox_propose: 2,
                       tailnet_overview: 1
 
   @doc "Asks the AI to stop a cancelled attempt, when the client supports it."

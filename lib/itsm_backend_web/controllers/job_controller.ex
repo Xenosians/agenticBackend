@@ -247,12 +247,14 @@ defmodule ItsmBackendWeb.JobController do
              {:error, :forbidden},
          {:ok, approval_id} <-
            approval_id(job),
+         {:ok, confirm_name} <- confirmation_name(conn.body_params),
          :ok <- validate_decision_binding(conn.body_params, job, approval_id),
          {:ok, resolved_job} <-
            resolve_approval(
              job,
              approval_id,
-             decision
+             decision,
+             confirm_name
            ),
          {:ok, response} <-
            PublicContract.build_job_response(resolved_job, wire_version(conn)) do
@@ -299,6 +301,16 @@ defmodule ItsmBackendWeb.JobController do
       {:error, :approval_binding_changed} ->
         conn |> put_status(:conflict) |> json(%{error: "approval_binding_changed"})
 
+      {:error, :invalid_confirmation} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: "invalid_confirmation"})
+
+      {:error, {:approval_confirmation, code, message}} ->
+        conn
+        |> put_status(:conflict)
+        |> json(%{error: code, message: message})
+
       {:error, reason} ->
         Logger.error(
           "job approval failed: " <>
@@ -321,6 +333,17 @@ defmodule ItsmBackendWeb.JobController do
     if submitted == approval_id or (submitted == nil and not workflow?),
       do: :ok,
       else: {:error, :approval_binding_changed}
+  end
+
+  # The owner's typed target name, only for destructive actions. The AI
+  # approval authority checks it against the frozen name; this controller
+  # only refuses a malformed value and passes it on unchanged.
+  defp confirmation_name(body) do
+    case Map.get(body, "confirm_name") do
+      nil -> {:ok, nil}
+      value when is_binary(value) -> {:ok, value}
+      _ -> {:error, :invalid_confirmation}
+    end
   end
 
   defp approval_id(%Job{
@@ -366,15 +389,20 @@ defmodule ItsmBackendWeb.JobController do
            status: "waiting_approval"
          } = job,
          approval_id,
-         decision
+         decision,
+         confirm_name
        ) do
-    case execute_approval_decision(approval_id, decision) do
+    case execute_approval_decision(approval_id, decision, confirm_name) do
       {:ok, approval_result} ->
         resolve_authoritative_approval(
           job,
           approval_id,
           approval_result
         )
+
+      {:error, {:approval_confirmation, _code, _message} = reason} ->
+        # The approval is still pending in the AI; the job stays waiting.
+        {:error, reason}
 
       {:error,
        {
@@ -397,7 +425,8 @@ defmodule ItsmBackendWeb.JobController do
            status: status
          },
          _approval_id,
-         _decision
+         _decision,
+         _confirm_name
        ) do
     {:error,
      {
@@ -433,8 +462,25 @@ defmodule ItsmBackendWeb.JobController do
     end
   end
 
-  defp execute_approval_decision(approval_id, decision) when decision in [:approve, :reject] do
-    case apply(RuntimeConfig.ai_client!(), decision, [approval_id]) do
+  defp execute_approval_decision(approval_id, :approve, confirm_name) do
+    case apply(RuntimeConfig.ai_client!(), :approve, [approval_id, confirm_name]) do
+      {:ok, result} when is_map(result) ->
+        {:ok, result}
+
+      {:ok, result} ->
+        {:error, {:approval_service_failed, {:invalid_approval_result, result}}}
+
+      {:error, {:ai_service_error, 409, %{"detail" => %{"code" => code, "message" => message}}}}
+      when code in ["confirmation_required", "confirmation_mismatch"] ->
+        {:error, {:approval_confirmation, code, message}}
+
+      {:error, reason} ->
+        {:error, {:approval_service_failed, reason}}
+    end
+  end
+
+  defp execute_approval_decision(approval_id, :reject, _confirm_name) do
+    case apply(RuntimeConfig.ai_client!(), :reject, [approval_id]) do
       {:ok, result}
       when is_map(result) ->
         {:ok, result}

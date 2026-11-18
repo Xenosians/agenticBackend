@@ -14,13 +14,13 @@ defmodule ItsmBackendWeb.ApprovalDecisionTestClient do
   defdelegate integrations(), to: ItsmBackend.AIClient.Mock
 
   @impl true
-  def approve(approval_id), do: decision(:approve, approval_id)
+  def approve(approval_id, confirm_name \\ nil), do: decision(:approve, approval_id, confirm_name)
 
   @impl true
-  def reject(approval_id), do: decision(:reject, approval_id)
+  def reject(approval_id), do: decision(:reject, approval_id, nil)
 
-  defp decision(action, approval_id) do
-    send(self(), {:ai_approval_decision, action, approval_id})
+  defp decision(action, approval_id, confirm_name) do
+    send(self(), {:ai_approval_decision, action, approval_id, confirm_name})
 
     case Process.get(:approval_decision_result) do
       nil -> apply(ItsmBackend.AIClient.Mock, action, [approval_id])

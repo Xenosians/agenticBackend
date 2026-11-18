@@ -13,7 +13,7 @@ defmodule ItsmBackendWeb.CancelTestClient do
   @impl true
   defdelegate integrations(), to: ItsmBackend.AIClient.Mock
   @impl true
-  defdelegate approve(approval_id), to: ItsmBackend.AIClient.Mock
+  defdelegate approve(approval_id, confirm_name \\ nil), to: ItsmBackend.AIClient.Mock
   @impl true
   defdelegate reject(approval_id), to: ItsmBackend.AIClient.Mock
 

@@ -4,8 +4,21 @@ defmodule ItsmBackend.ProxmoxActions.SurrealStore do
   alias ItsmBackend.Surreal
 
   @table "proxmox_action"
-  # Fields compared when the same submission arrives again.
-  @binding ~w(user_id submission_id action node vmid)
+
+  @doc """
+  Whether a saved action is the same request as this one. The action id is
+  derived from the owner and submission, so only the target and the change
+  values are compared; a new guest has no source VMID.
+  """
+  def same_binding?(stored, action) do
+    Map.take(stored, ~w(action node)) == Map.take(action, ~w(action node)) and
+      compatible_vmid?(stored["vmid"], action["vmid"]) and
+      Map.get(stored, "params", %{}) == Map.get(action, "params", %{})
+  end
+
+  defp compatible_vmid?(nil, _), do: true
+  defp compatible_vmid?(_, nil), do: true
+  defp compatible_vmid?(left, right), do: left == right
 
   @doc """
   Creates the action once. CREATE on the deterministic record id is the
@@ -23,7 +36,7 @@ defmodule ItsmBackend.ProxmoxActions.SurrealStore do
             {:error, create_error}
 
           {:ok, stored} ->
-            if Map.take(stored, @binding) == Map.take(action, @binding),
+            if same_binding?(stored, action),
               do: {:ok, stored, :existing},
               else: {:error, :proxmox_action_conflict}
 

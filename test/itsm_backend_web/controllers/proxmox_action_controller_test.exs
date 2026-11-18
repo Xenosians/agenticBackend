@@ -43,6 +43,29 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
     "error" => nil
   }
 
+  @deleted %{
+    "approval_id" => "a1b2c3d4",
+    "protocol_status" => "processed",
+    "execution_status" => "succeeded",
+    "approval_status" => "approved",
+    "replayed" => false,
+    "result" => %{
+      "ok" => true,
+      "status" => "executed",
+      "node" => "hummingbird",
+      "vmid" => 990,
+      "type" => "lxc",
+      "name" => "janus-lab",
+      "deleted" => true,
+      "changed" => true,
+      "verification_ok" => true,
+      "retry_safe" => false,
+      "upid" => "UPID:hummingbird:0004:0005:0006:vzdestroy:990:janus@pve!dashboard:",
+      "observed_at" => "2026-11-16T03:05:00+00:00"
+    },
+    "error" => nil
+  }
+
   setup do
     keys = [
       :ai_client,
@@ -77,7 +100,7 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
     response =
       owner |> conn_for() |> post("/api/v1/proxmox/actions", propose_body()) |> json_response(201)
 
-    assert_received {:proxmox_propose, user_id, "hummingbird", 990, "start"}
+    assert_received {:proxmox_propose, user_id, "hummingbird", 990, "start", %{}}
     assert user_id == owner.user["user_id"]
     assert response["status"] == "waiting_approval"
     assert response["action"] == "start"
@@ -87,7 +110,7 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
 
     assert response["approval_text"] == @proposal["approval_text"]
     refute Map.has_key?(response, "approval_id")
-    refute_received {:ai_approval_decision, _, _}
+    refute_received {:ai_approval_decision, _, _, _}
   end
 
   test "the same submission is proposed once and returns the same action", %{owner: owner} do
@@ -96,8 +119,8 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
     second = owner |> conn_for() |> post("/api/v1/proxmox/actions", body) |> json_response(200)
 
     assert first["action_id"] == second["action_id"]
-    assert_received {:proxmox_propose, _, _, _, _}
-    refute_received {:proxmox_propose, _, _, _, _}
+    assert_received {:proxmox_propose, _, _, _, _, _}
+    refute_received {:proxmox_propose, _, _, _, _, _}
 
     changed = Map.put(body, "action", "reboot")
 
@@ -115,7 +138,7 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
       |> post("/api/v1/proxmox/actions/#{created["action_id"]}/approve", %{})
       |> json_response(200)
 
-    assert_received {:ai_approval_decision, :approve, "a1b2c3d4"}
+    assert_received {:ai_approval_decision, :approve, "a1b2c3d4", nil}
     assert approved["status"] == "succeeded"
     assert approved["observed_status"] == "running"
     assert approved["verification_ok"] == true
@@ -128,7 +151,7 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
       |> json_response(200)
 
     assert again["status"] == "succeeded"
-    refute_received {:ai_approval_decision, :approve, _}
+    refute_received {:ai_approval_decision, :approve, _, _}
 
     [listed] =
       owner
@@ -155,11 +178,11 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
 
     first = owner |> conn_for() |> post(path, %{}) |> json_response(202)
     assert first["status"] == "outcome_unknown"
-    assert_received {:ai_approval_decision, :approve, "a1b2c3d4"}
+    assert_received {:ai_approval_decision, :approve, "a1b2c3d4", nil}
 
     second = owner |> conn_for() |> post(path, %{}) |> json_response(202)
     assert second["status"] == "outcome_unknown"
-    refute_received {:ai_approval_decision, :approve, _}
+    refute_received {:ai_approval_decision, :approve, _, _}
   end
 
   test "rejecting closes the proposal without running it", %{owner: owner} do
@@ -188,8 +211,8 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
       |> json_response(200)
 
     assert rejected["status"] == "rejected"
-    assert_received {:ai_approval_decision, :reject, "a1b2c3d4"}
-    refute_received {:ai_approval_decision, :approve, _}
+    assert_received {:ai_approval_decision, :reject, "a1b2c3d4", nil}
+    refute_received {:ai_approval_decision, :approve, _, _}
 
     assert owner
            |> conn_for()
@@ -208,7 +231,7 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
            |> post("/api/v1/proxmox/actions/#{created["action_id"]}/approve", %{})
            |> json_response(404) == %{"error" => "proxmox_action_not_found"}
 
-    refute_received {:ai_approval_decision, _, _}
+    refute_received {:ai_approval_decision, _, _, _}
 
     assert stranger |> conn_for() |> get("/api/v1/proxmox/actions") |> json_response(200) == %{
              "actions" => []
@@ -242,9 +265,9 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
            }
   end
 
-  test "only an exact node, VMID and one of four actions are accepted", %{owner: owner} do
+  test "only an exact node, a valid VMID and a known action are accepted", %{owner: owner} do
     for change <- [
-          %{"action" => "delete"},
+          %{"action" => "migrate"},
           %{"vmid" => "990"},
           %{"vmid" => 0},
           %{"node" => "../x"},
@@ -256,7 +279,120 @@ defmodule ItsmBackendWeb.ProxmoxActionControllerTest do
                %{"error" => "invalid_proxmox_action"}
     end
 
-    refute_received {:proxmox_propose, _, _, _, _}
+    refute_received {:proxmox_propose, _, _, _, _, _}
+  end
+
+  test "a change carries its own values to the approval and waits like a power action", %{
+    owner: owner
+  } do
+    Application.put_env(
+      :itsm_backend,
+      :proxmox_test_propose,
+      {:ok,
+       %{
+         @proposal
+         | "tool" => "proxmox_guest_set_options",
+           "action" => "set_options",
+           "approval_text" =>
+             "Set LXC 990 (janus-lab) tags to 'db,prod' and start at boot on Proxmox node hummingbird."
+       }}
+    )
+
+    body =
+      Map.merge(propose_body(), %{
+        "action" => "set_options",
+        "tags" => "db, prod",
+        "on_boot" => true
+      })
+
+    response = owner |> conn_for() |> post("/api/v1/proxmox/actions", body) |> json_response(201)
+
+    assert_received {:proxmox_propose, _, "hummingbird", 990, "set_options",
+                     %{"tags" => "db, prod", "on_boot" => true}}
+
+    assert response["status"] == "waiting_approval"
+    assert response["action"] == "set_options"
+    assert response["destructive"] == false
+  end
+
+  test "a destructive change needs the owner's typed guest name before anything is sent", %{
+    owner: owner
+  } do
+    Application.put_env(
+      :itsm_backend,
+      :proxmox_test_propose,
+      {:ok,
+       %{
+         @proposal
+         | "tool" => "proxmox_guest_delete",
+           "action" => "delete",
+           "approval_text" => "Delete LXC 990 (janus-lab) on Proxmox node hummingbird."
+       }}
+    )
+
+    Application.put_env(:itsm_backend, :proxmox_test_approve, {:ok, @deleted})
+
+    created =
+      owner
+      |> conn_for()
+      |> post("/api/v1/proxmox/actions", Map.merge(propose_body(), %{"action" => "delete"}))
+      |> json_response(201)
+
+    assert created["destructive"] == true
+    path = "/api/v1/proxmox/actions/#{created["action_id"]}/approve"
+
+    assert owner |> conn_for() |> post(path, %{}) |> json_response(409) ==
+             %{"error" => "proxmox_confirmation_required"}
+
+    assert owner
+           |> conn_for()
+           |> post(path, %{"confirm_name" => "something-else"})
+           |> json_response(409) == %{"error" => "proxmox_confirmation_mismatch"}
+
+    refute_received {:ai_approval_decision, _, _, _}
+
+    approved =
+      owner |> conn_for() |> post(path, %{"confirm_name" => "janus-lab"}) |> json_response(200)
+
+    assert_received {:ai_approval_decision, :approve, "a1b2c3d4", "janus-lab"}
+    assert approved["status"] == "succeeded"
+    assert approved["verification_ok"] == true
+  end
+
+  test "a new guest takes the free VMID the AI prepared", %{owner: owner} do
+    Application.put_env(
+      :itsm_backend,
+      :proxmox_test_propose,
+      {:ok,
+       Map.merge(@proposal, %{
+         "tool" => "proxmox_guest_create",
+         "action" => "create",
+         "vmid" => 992,
+         "new_vmid" => 992,
+         "name" => "lab-2",
+         "approval_text" =>
+           "Create LXC 992 (lab-2) on Proxmox node hummingbird. Janus asked Proxmox for the next free VMID."
+       })}
+    )
+
+    body =
+      Map.merge(propose_body(), %{
+        "action" => "create",
+        "vmid" => nil,
+        "hostname" => "lab-2",
+        "template" => "local:vztmpl/alpine-3.23-default_20260116_amd64.tar.xz",
+        "cores" => 1,
+        "memory_mib" => 128,
+        "disk_gib" => 2,
+        "storage" => "local-lvm"
+      })
+
+    response = owner |> conn_for() |> post("/api/v1/proxmox/actions", body) |> json_response(201)
+
+    assert_received {:proxmox_propose, _, "hummingbird", nil, "create", %{"hostname" => "lab-2"}}
+    assert response["vmid"] == 992
+    assert response["new_vmid"] == 992
+    assert response["status"] == "waiting_approval"
   end
 
   defp propose_body do

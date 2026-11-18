@@ -146,8 +146,8 @@ defmodule ItsmBackend.AIClient.HTTP do
   # ------------------------------------------------------------
 
   @impl true
-  def approve(approval_id) do
-    approval_decision(approval_id, "approve")
+  def approve(approval_id, confirm_name \\ nil) do
+    approval_decision(approval_id, "approve", confirm_name)
   end
 
   @impl true
@@ -155,15 +155,20 @@ defmodule ItsmBackend.AIClient.HTTP do
     approval_decision(approval_id, "reject")
   end
 
-  defp approval_decision(approval_id, decision) do
+  defp approval_decision(approval_id, decision, confirm_name \\ nil) do
     config =
       RuntimeConfig.ai_service!()
 
+    body =
+      if is_binary(confirm_name), do: [json: %{confirm_name: confirm_name}], else: []
+
     case Req.post(
            "#{config.base_url}/v1/approvals/#{URI.encode_www_form(approval_id)}/#{decision}",
-           headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
-           receive_timeout: config.run_timeout_ms,
-           retry: false
+           [
+             headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
+             receive_timeout: config.run_timeout_ms,
+             retry: false
+           ] ++ body
          ) do
       {:ok, %{status: status, body: body}}
       when status in 200..299 ->
@@ -292,7 +297,7 @@ defmodule ItsmBackend.AIClient.HTTP do
   end
 
   @impl true
-  def proxmox_propose(owner, node, vmid, action) do
+  def proxmox_propose(owner, proposal) do
     config = RuntimeConfig.ai_service!()
 
     # Proposing only reads the guest and records a pending approval, so one
@@ -300,7 +305,7 @@ defmodule ItsmBackend.AIClient.HTTP do
     case Req.post(
            "#{config.base_url}/internal/v1/proxmox/actions/propose",
            headers: [{"x-internal-token", RuntimeConfig.internal_job_token!()}],
-           json: %{owner: owner, node: node, vmid: vmid, action: action},
+           json: Map.put(proposal, :owner, owner),
            receive_timeout: config.run_timeout_ms,
            retry: false
          ) do

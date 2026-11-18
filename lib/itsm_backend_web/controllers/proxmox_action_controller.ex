@@ -5,7 +5,7 @@ defmodule ItsmBackendWeb.ProxmoxActionController do
 
   request_contract(:index, [])
 
-  request_contract(:create, required_body: ["node", "vmid", "action", "submission_id"])
+  request_contract(:create, required_body: ["node", "action", "submission_id"])
 
   request_contract(:approve, [])
   request_contract(:reject, [])
@@ -32,9 +32,7 @@ defmodule ItsmBackendWeb.ProxmoxActionController do
   def create(conn, params) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
       {:ok, conn, ctx} ->
-        body = Map.take(params, ["node", "vmid", "action", "submission_id"])
-
-        case ProxmoxActions.propose(ctx.user, body) do
+        case ProxmoxActions.propose(ctx.user, params) do
           {:ok, action, :created} -> conn |> put_status(:created) |> json(action)
           {:ok, action, :existing} -> json(conn, action)
           {:error, reason} -> refused(conn, reason)
@@ -45,13 +43,20 @@ defmodule ItsmBackendWeb.ProxmoxActionController do
     end
   end
 
-  def approve(conn, %{"id" => id}), do: decide(conn, id, &ProxmoxActions.approve/2)
-  def reject(conn, %{"id" => id}), do: decide(conn, id, &ProxmoxActions.reject/2)
+  def approve(conn, %{"id" => id} = params) do
+    # The owner's typed target name for a destructive change. It is checked
+    # against the name frozen in this action before anything is sent.
+    confirm_name = Map.get(params, "confirm_name")
+    decide(conn, fn user -> ProxmoxActions.approve(user, id, confirm_name) end)
+  end
 
-  defp decide(conn, id, decision) do
+  def reject(conn, %{"id" => id}),
+    do: decide(conn, fn user -> ProxmoxActions.reject(user, id) end)
+
+  defp decide(conn, decision) do
     case AuthRequest.require_authenticated(conn, csrf: true) do
       {:ok, conn, ctx} ->
-        case decision.(ctx.user, id) do
+        case decision.(ctx.user) do
           # An unconfirmed outcome is accepted, not done: the guest must be checked.
           {:ok, %{"status" => "outcome_unknown"} = action} ->
             conn |> put_status(:accepted) |> json(action)
@@ -76,6 +81,13 @@ defmodule ItsmBackendWeb.ProxmoxActionController do
 
   defp refused(conn, :already_decided),
     do: conn |> put_status(:conflict) |> json(%{error: "proxmox_action_already_decided"})
+
+  # A destructive change needs the target's exact name typed by the owner.
+  defp refused(conn, :confirmation_required),
+    do: conn |> put_status(:conflict) |> json(%{error: "proxmox_confirmation_required"})
+
+  defp refused(conn, :confirmation_mismatch),
+    do: conn |> put_status(:conflict) |> json(%{error: "proxmox_confirmation_mismatch"})
 
   defp refused(conn, :not_found),
     do: conn |> put_status(:not_found) |> json(%{error: "proxmox_action_not_found"})

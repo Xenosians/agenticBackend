@@ -26,7 +26,7 @@ defmodule ItsmBackend.RuntimeConfigTest do
     end
 
     @impl true
-    def approve(_approval_id) do
+    def approve(_approval_id, _confirm_name \\ nil) do
       {:ok, %{}}
     end
 

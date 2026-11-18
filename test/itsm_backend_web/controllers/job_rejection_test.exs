@@ -23,7 +23,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
     assert response["result"]["approval_execution"]["execution_status"] == "rejected"
     assert response["result"]["approval_execution"]["result"] == nil
     assert response["proposed_tool"] == job.proposed_tool
-    assert_receive {:ai_approval_decision, :reject, "approval-fixture"}
+    assert_receive {:ai_approval_decision, :reject, "approval-fixture", nil}
 
     {:ok, stored} = Jobs.get(job.id)
     assert stored.status == "denied"
@@ -58,7 +58,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
              }
     end
 
-    refute_received {:ai_approval_decision, _, _}
+    refute_received {:ai_approval_decision, _, _, _}
     assert {:ok, unchanged} = Jobs.get(job.id)
     assert unchanged == stored
   end
@@ -84,14 +84,14 @@ defmodule ItsmBackendWeb.JobRejectionTest do
            |> post(path, %{})
            |> json_response(403)
 
-    refute_received {:ai_approval_decision, _, _}
+    refute_received {:ai_approval_decision, _, _, _}
 
     assert cookie_conn.()
            |> put_req_header("x-csrf-token", id.auth.csrf_token)
            |> post(path, %{})
            |> json_response(200)
 
-    assert_receive {:ai_approval_decision, :reject, "approval-fixture"}
+    assert_receive {:ai_approval_decision, :reject, "approval-fixture", nil}
   end
 
   test "missing persisted approval or non-waiting job never reaches AI", %{identity: id} do
@@ -112,7 +112,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
       })
 
     assert decide(id, pending, :reject) |> json_response(409)
-    refute_received {:ai_approval_decision, _, _}
+    refute_received {:ai_approval_decision, _, _, _}
   end
 
   test "v1 rejection shares authority and projects to failed", %{identity: id} do
@@ -135,7 +135,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
       |> json_response(409)
 
     assert forged_response == %{"error" => "approval_binding_changed"}
-    refute_receive {:ai_approval_decision, _, _}
+    refute_receive {:ai_approval_decision, _, _, _}
 
     response =
       auth_conn(id)
@@ -146,7 +146,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
       |> json_response(200)
 
     assert response["status"] == "denied"
-    assert_receive {:ai_approval_decision, :reject, "approval-fixture"}
+    assert_receive {:ai_approval_decision, :reject, "approval-fixture", nil}
     assert {:ok, unchanged} = Jobs.get(job.id)
     assert unchanged.proposed_tool == job.proposed_tool
     assert unchanged.status == "denied"
@@ -165,7 +165,7 @@ defmodule ItsmBackendWeb.JobRejectionTest do
       assert response["status"] == status
       assert response["result"]["approval_execution"]["execution_status"] == execution
       refute response["error"] == "Action rejected by the user. No tool was executed."
-      assert_receive {:ai_approval_decision, :reject, "approval-fixture"}
+      assert_receive {:ai_approval_decision, :reject, "approval-fixture", nil}
     end
   end
 
@@ -192,9 +192,9 @@ defmodule ItsmBackendWeb.JobRejectionTest do
       assert response["result"]["approval_reconciliation"]["automatic_retry"] == false
       assert response["error"] =~ "unresolved"
       refute Map.has_key?(response["result"], "approval_execution")
-      assert_receive {:ai_approval_decision, :reject, "approval-fixture"}
+      assert_receive {:ai_approval_decision, :reject, "approval-fixture", nil}
       assert decide(id, job, :approve) |> json_response(409)
-      refute_received {:ai_approval_decision, _, _}
+      refute_received {:ai_approval_decision, _, _, _}
     end
   end
 

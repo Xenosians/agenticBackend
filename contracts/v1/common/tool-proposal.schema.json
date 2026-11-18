@@ -26,6 +26,12 @@
       ],
       "minLength": 1,
       "description": "Trusted persisted approval identifier when approval is required."
+    },
+    "confirmation_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Present only for a destructive approval: the exact text (the frozen target's name) the owner must type to approve it. The AI approval authority checks the typed text; this field only tells the reviewer what to type."
     }
   },
   "additionalProperties": false

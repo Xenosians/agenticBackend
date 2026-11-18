@@ -57,7 +57,7 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
-  def approve(approval_id) do
+  def approve(approval_id, _confirm_name \\ nil) do
     {:ok,
      %{
        "approval_id" => approval_id,
@@ -125,7 +125,7 @@ defmodule ItsmBackend.AIClient.Mock do
   end
 
   @impl true
-  def proxmox_propose(_owner, _node, _vmid, _action) do
+  def proxmox_propose(_owner, _proposal) do
     {:error, :proxmox_action_unavailable}
   end
 

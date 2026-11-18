@@ -24,20 +24,23 @@ defmodule ItsmBackendWeb.ProxmoxActionTestClient do
   end
 
   @impl true
-  def proxmox_propose(owner, node, vmid, action) do
-    notify({:proxmox_propose, owner, node, vmid, action})
+  def proxmox_propose(owner, proposal) do
+    notify(
+      {:proxmox_propose, owner, proposal.node, proposal.vmid, proposal.action, proposal.params}
+    )
+
     answer(:proxmox_test_propose, {:error, :unsupported_request})
   end
 
   @impl true
-  def approve(approval_id) do
-    notify({:ai_approval_decision, :approve, approval_id})
+  def approve(approval_id, confirm_name \\ nil) do
+    notify({:ai_approval_decision, :approve, approval_id, confirm_name})
     answer(:proxmox_test_approve, {:error, :unsupported_request})
   end
 
   @impl true
   def reject(approval_id) do
-    notify({:ai_approval_decision, :reject, approval_id})
+    notify({:ai_approval_decision, :reject, approval_id, nil})
     answer(:proxmox_test_reject, {:error, :unsupported_request})
   end
 
