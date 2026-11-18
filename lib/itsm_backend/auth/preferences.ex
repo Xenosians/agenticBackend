@@ -1,8 +1,9 @@
 defmodule ItsmBackend.Auth.Preferences do
   @moduledoc """
   Owner-controlled settings: task completion emails, the workspace
-  appearance (theme, accent and whether the agents' gladiators are shown)
-  and the dashboards pinned to the rail.
+  appearance (theme, accent, whether the agents' gladiators are shown and
+  whether the sidebar is collapsed to its icon rail) and the pinned
+  dashboards.
   Each value comes from a fixed list, so a stored or submitted value outside
   it is refused, never defaulted.
   """
@@ -18,7 +19,8 @@ defmodule ItsmBackend.Auth.Preferences do
     "theme" => "dark",
     "accent" => "mono",
     "pinned_views" => ["knowledge", "operations"],
-    "gladiators" => true
+    "gladiators" => true,
+    "sidebar_collapsed" => false
   }
 
   def get(user_id) do
@@ -75,6 +77,7 @@ defmodule ItsmBackend.Auth.Preferences do
 
   defp valid?("task_completed", value), do: is_boolean(value)
   defp valid?("gladiators", value), do: is_boolean(value)
+  defp valid?("sidebar_collapsed", value), do: is_boolean(value)
   defp valid?("theme", value), do: value in @themes
   defp valid?("accent", value), do: value in @accents
 

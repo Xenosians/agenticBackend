@@ -12,7 +12,8 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
     "theme" => "dark",
     "accent" => "mono",
     "pinned_views" => ["knowledge", "operations"],
-    "gladiators" => true
+    "gladiators" => true,
+    "sidebar_collapsed" => false
   }
 
   test "preferences default on, persist explicitly, and never update another owner" do
@@ -140,9 +141,59 @@ defmodule ItsmBackendWeb.AccountPreferencesTest do
            )["preferences"] == @defaults
   end
 
+  test "the sidebar is open by default and a collapsed sidebar is saved per owner" do
+    owner = AuthTestSupport.authenticated_identity!()
+    other = AuthTestSupport.authenticated_identity!()
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"sidebar_collapsed" => true}),
+             200
+           )["preferences"] == %{@defaults | "sidebar_collapsed" => true}
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 200)["preferences"][
+             "sidebar_collapsed"
+           ] == true
+
+    assert {:ok, @defaults} = Preferences.get(other.user["user_id"])
+
+    for body <- [
+          %{"sidebar_collapsed" => "true"},
+          %{"sidebar_collapsed" => nil},
+          %{"sidebar_collapsed" => 1},
+          %{"sidebar_collapsed" => "collapsed"}
+        ] do
+      assert json_response(put(authed(owner), "/api/v1/auth/preferences", body), 422)
+    end
+
+    assert json_response(
+             put(authed(owner), "/api/v1/auth/preferences", %{"sidebar_collapsed" => false}),
+             200
+           )["preferences"] == @defaults
+  end
+
+  test "an unknown stored sidebar setting is unknown, not replaced by a default" do
+    owner = AuthTestSupport.authenticated_identity!()
+
+    assert {:ok, _} =
+             Surreal.query(
+               "UPDATE ONLY type::record('app_user', $id) SET notification_preferences.sidebar_collapsed = 'half';",
+               %{"id" => owner.user["user_id"]}
+             )
+
+    assert json_response(get(authed(owner), "/api/v1/auth/preferences"), 503)["error"] ==
+             "preferences_unavailable"
+  end
+
   test "the preferences request contract publishes every setting the owner may send" do
     assert ItsmBackendWeb.PreferenceController.__request_contract__(:update).optional_body ==
-             ["task_completed", "theme", "accent", "pinned_views", "gladiators"]
+             [
+               "task_completed",
+               "theme",
+               "accent",
+               "pinned_views",
+               "gladiators",
+               "sidebar_collapsed"
+             ]
   end
 
   test "an unknown stored gladiator setting is unknown, not replaced by a default" do
